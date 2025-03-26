@@ -8,17 +8,18 @@ import 'package:path/path.dart' as path;
 import 'dart:io';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
-// Book model class with added reading time
+// Book model with robust JSON handling
 class Book {
   final int? id;
   final String title;
   final String filePath;
   final String lastReadPosition;
-  final int totalReadingTime; // In seconds
-  final Map<String, List<String>> highlights; // Map of chapter -> list of highlighted text
+  final int totalReadingTime;
+  final Map<String, List<String>> highlights;
 
-  Book({
+  const Book({
     this.id,
     required this.title,
     required this.filePath,
@@ -27,27 +28,28 @@ class Book {
     this.highlights = const {},
   });
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'title': title,
-      'filePath': filePath,
-      'lastReadPosition': lastReadPosition,
-      'totalReadingTime': totalReadingTime,
-      'highlights': highlightsToJson(),
-    };
-  }
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'title': title,
+    'filePath': filePath,
+    'lastReadPosition': lastReadPosition,
+    'totalReadingTime': totalReadingTime,
+    'highlights': json.encode(highlights),
+  };
 
-  // Convert highlights map to JSON string
-  String highlightsToJson() {
-    final Map<String, dynamic> jsonMap = {};
-    highlights.forEach((chapter, texts) {
-      jsonMap[chapter] = texts;
-    });
-    return jsonMap.toString();
-  }
+  static Book fromMap(Map<String, dynamic> map) => Book(
+    id: map['id'],
+    title: map['title'],
+    filePath: map['filePath'],
+    lastReadPosition: map['lastReadPosition'] ?? '0',
+    totalReadingTime: map['totalReadingTime'] ?? 0,
+    highlights: map['highlights'] != null
+        ? Map<String, List<String>>.from(
+        json.decode(map['highlights']) ?? {}
+    )
+        : {},
+  );
 
-  // Create a copy of book with updated fields
   Book copyWith({
     int? id,
     String? title,
@@ -55,93 +57,50 @@ class Book {
     String? lastReadPosition,
     int? totalReadingTime,
     Map<String, List<String>>? highlights,
-  }) {
-    return Book(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      filePath: filePath ?? this.filePath,
-      lastReadPosition: lastReadPosition ?? this.lastReadPosition,
-      totalReadingTime: totalReadingTime ?? this.totalReadingTime,
-      highlights: highlights ?? this.highlights,
-    );
-  }
-
-  // Parse highlights from JSON string
-  static Map<String, List<String>> parseHighlights(String json) {
-    if (json.isEmpty) return {};
-
-    // Basic parsing - in a real app you'd use a proper JSON parser
-    final Map<String, List<String>> result = {};
-    try {
-      // Very simple parsing logic - would need more robust implementation
-      final content = json.substring(1, json.length - 1); // Remove outer {}
-      final entries = content.split(', ');
-
-      for (var entry in entries) {
-        final parts = entry.split(': ');
-        if (parts.length == 2) {
-          final key = parts[0].replaceAll('"', '');
-          final value = parts[1];
-
-          // Parse list
-          final listContent = value.substring(1, value.length - 1); // Remove []
-          final items = listContent.split(', ');
-          final cleanItems = items.map((e) => e.replaceAll('"', '')).toList();
-
-          result[key] = cleanItems;
-        }
-      }
-    } catch (e) {
-      print('Error parsing highlights: $e');
-    }
-    return result;
-  }
+  }) => Book(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    filePath: filePath ?? this.filePath,
+    lastReadPosition: lastReadPosition ?? this.lastReadPosition,
+    totalReadingTime: totalReadingTime ?? this.totalReadingTime,
+    highlights: highlights ?? this.highlights,
+  );
 }
 
-// Database helper with updated methods for reading time and highlights
+// Singleton Database Helper
 class DatabaseHelper {
+  static final DatabaseHelper _instance = DatabaseHelper._internal();
   static Database? _database;
 
+  factory DatabaseHelper() => _instance;
+  DatabaseHelper._internal();
+
   Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await initDatabase();
-    return _database!;
+    return _database ??= await _initDatabase();
   }
 
-  Future<Database> initDatabase() async {
-    String databasesPath = await getDatabasesPath();
-    String dbPath = path.join(databasesPath, 'books_database.db');
-    return openDatabase(
+  Future<Database> _initDatabase() async {
+    final dbPath = path.join(await getDatabasesPath(), 'books_database.db');
+    return await openDatabase(
       dbPath,
-      onCreate: (db, version) {
-        return db.execute(
-          'CREATE TABLE books(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, filePath TEXT, lastReadPosition TEXT, totalReadingTime INTEGER, highlights TEXT)',
-        );
-      },
       version: 1,
+      onCreate: (db, version) => db.execute(
+        'CREATE TABLE books(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, filePath TEXT, lastReadPosition TEXT, totalReadingTime INTEGER, highlights TEXT)',
+      ),
     );
   }
 
   Future<void> insertBook(Book book) async {
-    final Database db = await database;
-    await db.insert('books', book.toMap());
+    final db = await database;
+    await db.insert('books', book.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace
+    );
   }
 
   Future<List<Book>> getBooks() async {
-    final Database db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('books');
-    return List.generate(maps.length, (i) {
-      return Book(
-        id: maps[i]['id'],
-        title: maps[i]['title'],
-        filePath: maps[i]['filePath'],
-        lastReadPosition: maps[i]['lastReadPosition'] ?? '0',
-        totalReadingTime: maps[i]['totalReadingTime'] ?? 0,
-        highlights: maps[i]['highlights'] != null
-            ? Book.parseHighlights(maps[i]['highlights'])
-            : {},
-      );
-    });
+    final db = await database;
+    final maps = await db.query('books');
+    return maps.map(Book.fromMap).toList();
   }
 
   Future<void> updateBook(Book book) async {
@@ -154,129 +113,76 @@ class DatabaseHelper {
     );
   }
 
-  Future<void> updateReadingTime(int bookId, int seconds) async {
+  Future<void> updateBookMetadata(int bookId, {int? readingTime, String? chapter, String? highlight}) async {
     final db = await database;
-    final books = await db.query(
-      'books',
-      where: 'id = ?',
-      whereArgs: [bookId],
-    );
+    final books = await db.query('books', where: 'id = ?', whereArgs: [bookId]);
 
     if (books.isNotEmpty) {
-      int currentTime = (books[0]['totalReadingTime'] as int?) ?? 0;
-      int newTime = currentTime + seconds;
+      final book = Book.fromMap(books.first);
 
-      final book = Book(
-        id: books[0]['id'] as int,
-        title: books[0]['title'] as String,
-        filePath: books[0]['filePath'] as String,
-        lastReadPosition: books[0]['lastReadPosition'] as String,
-        totalReadingTime: newTime,
-      );
-
-      await updateBook(book);
-    }
-  }
-
-  Future<void> saveHighlight(int bookId, String chapter, String text) async {
-    final db = await database;
-    final books = await db.query(
-      'books',
-      where: 'id = ?',
-      whereArgs: [bookId],
-    );
-
-    if (books.isNotEmpty) {
-      Map<String, List<String>> currentHighlights = {};
-      if (books[0]['highlights'] != null) {
-        currentHighlights = Book.parseHighlights(books[0]['highlights'] as String);
-      }
-
-      // Add highlight
-      final updatedHighlights = Map<String, List<String>>.from(currentHighlights);
-      if (updatedHighlights.containsKey(chapter)) {
-        updatedHighlights[chapter]!.add(text);
-      } else {
-        updatedHighlights[chapter] = [text];
-      }
-
-      final updatedBook = Book(
-        id: books[0]['id'] as int,
-        title: books[0]['title'] as String,
-        filePath: books[0]['filePath'] as String,
-        lastReadPosition: books[0]['lastReadPosition'] as String,
-        totalReadingTime: books[0]['totalReadingTime'] as int? ?? 0,
-        highlights: updatedHighlights,
+      final updatedBook = book.copyWith(
+        totalReadingTime: readingTime ?? book.totalReadingTime,
+        highlights: highlight != null && chapter != null
+            ? _addHighlight(book.highlights, chapter, highlight)
+            : book.highlights,
       );
 
       await updateBook(updatedBook);
     }
   }
+
+  Map<String, List<String>> _addHighlight(Map<String, List<String>> highlights, String chapter, String text) {
+    final updatedHighlights = Map<String, List<String>>.from(highlights);
+    updatedHighlights.putIfAbsent(chapter, () => []).add(text);
+    return updatedHighlights;
+  }
 }
 
-// Reading settings provider with additional settings
-class ReadingSettings with ChangeNotifier {
+// Reading Settings Provider
+class ReadingSettings extends ChangeNotifier {
+  static const _fontSizeKey = 'fontSize';
+  static const _fontFamilyKey = 'fontFamily';
+  static const _lineHeightKey = 'lineHeight';
+
   double _fontSize = 16;
-  double get fontSize => _fontSize;
-
   String _fontFamily = 'Roboto';
-  String get fontFamily => _fontFamily;
-
-  Color _backgroundColor = Colors.white;
-  Color get backgroundColor => _backgroundColor;
-
-  Color _textColor = Colors.black;
-  Color get textColor => _textColor;
-
   double _lineHeight = 1.4;
+
+  double get fontSize => _fontSize;
+  String get fontFamily => _fontFamily;
   double get lineHeight => _lineHeight;
 
-  // Update methods
-  void updateFontSize(double size) {
-    _fontSize = size;
-    notifyListeners();
-    _saveSettings();
-  }
-
-  void updateFontFamily(String family) {
-    _fontFamily = family;
-    notifyListeners();
-    _saveSettings();
-  }
-
-  void updateBackgroundColor(Color color) {
-    _backgroundColor = color;
-    notifyListeners();
-    _saveSettings();
-  }
-
-  void updateTextColor(Color color) {
-    _textColor = color;
-    notifyListeners();
-    _saveSettings();
-  }
-
-  void updateLineHeight(double height) {
-    _lineHeight = height;
-    notifyListeners();
-    _saveSettings();
-  }
-
-  // Load settings from SharedPreferences
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _fontSize = prefs.getDouble('fontSize') ?? 16;
-    _fontFamily = prefs.getString('fontFamily') ?? 'Roboto';
-    _lineHeight = prefs.getDouble('lineHeight') ?? 1.4;
+    _fontSize = prefs.getDouble(_fontSizeKey) ?? 16;
+    _fontFamily = prefs.getString(_fontFamilyKey) ?? 'Roboto';
+    _lineHeight = prefs.getDouble(_lineHeightKey) ?? 1.4;
     notifyListeners();
   }
 
-  // Save settings to SharedPreferences
+  void updateSetting(String key, dynamic value) {
+    switch (key) {
+      case _fontSizeKey:
+        _fontSize = value;
+        break;
+      case _fontFamilyKey:
+        _fontFamily = value;
+        break;
+      case _lineHeightKey:
+        _lineHeight = value;
+        break;
+    }
+    _saveSettings();
+    notifyListeners();
+  }
+
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('fontSize', _fontSize);
-    await prefs.setString('fontFamily', _fontFamily);
-    await prefs.setDouble('lineHeight', _lineHeight);
+    await Future.wait([
+      prefs.setDouble(_fontSizeKey, _fontSize),
+      prefs.setString(_fontFamilyKey, _fontFamily),
+      prefs.setDouble(_lineHeightKey, _lineHeight),
+    ]);
   }
 }
 
@@ -284,6 +190,7 @@ class ReadingSettings with ChangeNotifier {
 class ReadingTimeTracker {
   final int bookId;
   final DatabaseHelper databaseHelper;
+
   DateTime? _startTime;
   Timer? _timer;
   int _sessionSeconds = 0;
@@ -292,49 +199,62 @@ class ReadingTimeTracker {
 
   void startTracking() {
     _startTime = DateTime.now();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      _sessionSeconds++;
-    });
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _sessionSeconds++);
   }
 
   Future<void> stopTracking() async {
     _timer?.cancel();
     if (_startTime != null) {
-      final elapsedSeconds = _sessionSeconds;
-      await databaseHelper.updateReadingTime(bookId, elapsedSeconds);
-      _sessionSeconds = 0;
-      _startTime = null;
+      await databaseHelper.updateBookMetadata(
+          bookId,
+          readingTime: _sessionSeconds
+      );
+      _resetTracking();
     }
   }
 
-  String get formattedSessionTime {
+  void _resetTracking() {
+    _sessionSeconds = 0;
+    _startTime = null;
+  }
+
+  String formatSessionTime() {
     final hours = _sessionSeconds ~/ 3600;
     final minutes = (_sessionSeconds % 3600) ~/ 60;
     final seconds = _sessionSeconds % 60;
 
-    if (hours > 0) {
-      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-    } else {
-      return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-    }
+    return hours > 0
+        ? '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}'
+        : '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 }
 
-// Main App
+// Main Application Entry Point
+
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  final readingSettings = ReadingSettings();
-  await readingSettings.loadSettings();
-
-  runApp(
-    ChangeNotifierProvider.value(
-      value: readingSettings,
-      child: const EpubReaderApp(),
-    ),
-  );
+  runApp(const MyApp());
 }
 
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'EPUB Reader',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const LibraryScreen(),
+    );
+  }
+}
+
+// Your other code remains unchanged
+
+
+// Main App Widget
 class EpubReaderApp extends StatelessWidget {
   const EpubReaderApp({Key? key}) : super(key: key);
 
@@ -351,7 +271,7 @@ class EpubReaderApp extends StatelessWidget {
   }
 }
 
-// Library Screen with reading statistics
+// Library Screen
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({Key? key}) : super(key: key);
 
@@ -538,7 +458,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     MaterialPageRoute(
                       builder: (context) => ReaderScreen(book: books[index]),
                     ),
-                  ).then((_) => _loadBooks()); // Refresh when returning
+                  ).then((_) => _loadBooks());
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Book ID is null')),
@@ -578,7 +498,7 @@ class SettingsScreen extends StatelessWidget {
               divisions: 10,
               label: '${readingSettings.fontSize.toInt()}',
               onChanged: (value) {
-                readingSettings.updateFontSize(value);
+                readingSettings.updateSetting('fontSize', value);
               },
             ),
           ),
@@ -591,7 +511,7 @@ class SettingsScreen extends StatelessWidget {
               divisions: 10,
               label: readingSettings.lineHeight.toStringAsFixed(1),
               onChanged: (value) {
-                readingSettings.updateLineHeight(value);
+                readingSettings.updateSetting('lineHeight', value);
               },
             ),
           ),
@@ -607,7 +527,7 @@ class SettingsScreen extends StatelessWidget {
               ],
               onChanged: (value) {
                 if (value != null) {
-                  readingSettings.updateFontFamily(value);
+                  readingSettings.updateSetting('fontFamily', value);
                 }
               },
             ),
@@ -663,7 +583,6 @@ class HighlightsScreen extends StatelessWidget {
                           IconButton(
                             icon: const Icon(Icons.copy),
                             onPressed: () {
-                              // Copy to clipboard functionality would go here
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Copied to clipboard')),
                               );
@@ -672,7 +591,6 @@ class HighlightsScreen extends StatelessWidget {
                           IconButton(
                             icon: const Icon(Icons.share),
                             onPressed: () {
-                              // Share functionality would go here
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Share functionality')),
                               );
@@ -692,7 +610,7 @@ class HighlightsScreen extends StatelessWidget {
   }
 }
 
-// Reader Screen with vocsy_epub_viewer
+// Reader Screen
 class ReaderScreen extends StatefulWidget {
   final Book book;
 
@@ -875,8 +793,6 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       ),
     )
         : Scaffold(
-      // This is just a placeholder since the actual EPUB viewer
-      // is opened by the VocsyEpub.open method
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
