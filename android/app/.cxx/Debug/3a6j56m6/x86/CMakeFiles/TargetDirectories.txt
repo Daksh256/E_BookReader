@@ -1,0 +1,2 @@
+C:/Users/manan/AndroidStudioProjects/E_BookReader/android/app/.cxx/Debug/3a6j56m6/x86/CMakeFiles/edit_cache.dir
+C:/Users/manan/AndroidStudioProjects/E_BookReader/android/app/.cxx/Debug/3a6j56m6/x86/CMakeFiles/rebuild_cache.dir

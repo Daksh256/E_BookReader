@@ -41,7 +41,7 @@ dependencies:
   sqflite: ^2.2.0
   provider: ^6.0.4
   vocsy_epub_viewer: ^3.0.0
-  shared_preferences: ^2.5.2
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:
