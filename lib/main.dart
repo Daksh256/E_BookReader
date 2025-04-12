@@ -140,38 +140,41 @@ class DatabaseHelper {
       print("Book inserted/replaced: ${book.title} with new ID: $id");
     } catch (e) {
       print("Error inserting book ${book.title}: $e");
+      // Re-throw the error if you want calling functions to handle it
+      // throw e;
     }
   }
 
   Future<List<Book>> getBooks() async {
-    try {
-      final db = await database;
-      // Order by title for consistency
-      final maps = await db.query('books', orderBy: 'title ASC');
-      if (maps.isEmpty) {
-        print("No books found in database.");
-        return [];
-      }
-      List<Book> books = maps.map((map) {
-        try {
-          return Book.fromMap(map);
-        } catch (e) {
-          print("Error creating Book object from map: $map, Error: $e");
-          return null; // Return null for maps that cause errors
-        }
-      }).where((book) => book != null).cast<Book>().toList(); // Filter out nulls
-      print("Loaded ${books.length} books from database.");
-      return books;
-    } catch (e) {
-      print("Error getting books from database: $e");
-      return []; // Return empty list on error
+    // No try-catch here, let the caller handle DB errors
+    final db = await database;
+    // Order by title for consistency
+    final maps = await db.query('books', orderBy: 'title ASC');
+    if (maps.isEmpty) {
+      print("No books found in database.");
+      return [];
     }
+    // Use List.generate for potentially slightly better performance on large lists
+    List<Book> books = List.generate(maps.length, (i) {
+      try {
+        return Book.fromMap(maps[i]);
+      } catch (e) {
+        print("Error creating Book object from map: ${maps[i]}, Error: $e");
+        // In a production app, you might want to handle corrupted data differently
+        // For now, we return null and filter later.
+        return null;
+      }
+    }).where((book) => book != null).cast<Book>().toList(); // Filter out nulls from failed parsing
+
+    print("Loaded ${books.length} books from database.");
+    return books;
+    // No general catch block here in the helper - let errors propagate
   }
 
   Future<void> updateBook(Book book) async {
     if (book.id == null) {
       print("Error updating book: ID is null for title '${book.title}'");
-      return;
+      return; // Or throw an error
     }
     try {
       final db = await database;
@@ -184,31 +187,37 @@ class DatabaseHelper {
       print("Updated book ID ${book.id}. Rows affected: $count");
     } catch (e) {
       print("Error updating book ID ${book.id}: $e");
+      // throw e; // Optional: re-throw
     }
   }
 
   // Specific method to update metadata like reading time and highlights
   Future<void> updateBookMetadata(int bookId, {int? readingTime, String? chapter, String? highlight}) async {
-    final db = await database;
-    final books = await db.query('books', where: 'id = ?', whereArgs: [bookId]);
+    try {
+      final db = await database;
+      final books = await db.query('books', where: 'id = ?', whereArgs: [bookId]);
 
-    if (books.isNotEmpty) {
-      final book = Book.fromMap(books.first); // Create Book object from DB data
+      if (books.isNotEmpty) {
+        final book = Book.fromMap(books.first); // Create Book object from DB data
 
-      final updatedBook = book.copyWith(
-        // Accumulate reading time safely, ensuring non-null value
-        totalReadingTime: (book.totalReadingTime) + (readingTime ?? 0),
-        // Add highlight if provided
-        highlights: highlight != null && chapter != null
-            ? _addHighlight(book.highlights, chapter, highlight)
-            : book.highlights, // Keep existing highlights if none added
-      );
+        final updatedBook = book.copyWith(
+          // Accumulate reading time safely, ensuring non-null value
+          totalReadingTime: (book.totalReadingTime) + (readingTime ?? 0),
+          // Add highlight if provided
+          highlights: highlight != null && chapter != null
+              ? _addHighlight(book.highlights, chapter, highlight)
+              : book.highlights, // Keep existing highlights if none added
+        );
 
-      // Use the general updateBook method to save changes
-      await updateBook(updatedBook);
-      print("Updated metadata for book ID $bookId. New time: ${updatedBook.totalReadingTime}, Highlight added: ${highlight != null}");
-    } else {
-      print("Attempted to update metadata, but book ID $bookId not found.");
+        // Use the general updateBook method to save changes
+        await updateBook(updatedBook); // This already has try-catch
+        print("Updated metadata for book ID $bookId. New time: ${updatedBook.totalReadingTime}, Highlight added: ${highlight != null}");
+      } else {
+        print("Attempted to update metadata, but book ID $bookId not found.");
+      }
+    } catch(e) {
+      print("Error fetching book for metadata update (ID: $bookId): $e");
+      // throw e; // Optional: re-throw
     }
   }
 
@@ -240,6 +249,7 @@ class DatabaseHelper {
       print("Deleted book record ID $id from database. Rows affected: $count");
     } catch (e) {
       print("Error deleting book record ID $id from database: $e");
+      // throw e; // Optional: re-throw
     }
   }
 }
@@ -460,20 +470,27 @@ class EpubReaderApp extends StatelessWidget {
       debugShowCheckedModeBanner: false, // Disable debug banner
       title: 'Flutter EPUB Reader',
       theme: ThemeData(
-        primarySwatch: Colors.indigo,
+        // Use Material 3 styling
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.light),
         fontFamily: readingSettings.fontFamily, // Apply selected font family
-        brightness: Brightness.light,
-        scaffoldBackgroundColor: Colors.grey[100],
-        cardTheme: CardTheme(elevation: 2.0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-        // Add more light theme customizations
+        // Light theme customizations (can use colorScheme properties)
+        cardTheme: CardTheme(
+          elevation: 1.0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), // Default card margin
+        ),
       ),
       darkTheme: ThemeData(
-        primarySwatch: Colors.indigo,
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.dark),
         fontFamily: readingSettings.fontFamily, // Apply selected font family
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: Colors.grey[900],
-        cardTheme: CardTheme(elevation: 2.0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-        // Add more dark theme customizations
+        // Dark theme customizations
+        cardTheme: CardTheme(
+          elevation: 1.0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        ),
       ),
       themeMode: ThemeMode.system, // Follow system preference for light/dark mode
       home: const LibraryScreen(), // Start with the library screen
@@ -481,8 +498,9 @@ class EpubReaderApp extends StatelessWidget {
   }
 }
 
+
 // --- Library Screen ---
-// Displays the list of imported books
+// Displays the list of imported books as a grid of covers (UPDATED UI)
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({Key? key}) : super(key: key);
 
@@ -498,30 +516,47 @@ class _LibraryScreenState extends State<LibraryScreen> {
   @override
   void initState() {
     super.initState();
-    print("LibraryScreen: initState");
+    print("LibraryScreen: initState - Calling _loadBooks");
     _loadBooks(); // Load books when the screen initializes
   }
 
-  // Load books from the database
+  // Load books from the database (with error handling)
   Future<void> _loadBooks() async {
-    print("LibraryScreen: Loading books...");
-    if (!mounted) return; // Check if the widget is still mounted
+    print("LibraryScreen: _loadBooks - Start. Mounted: $mounted");
+    if (!mounted) return;
     setState(() { isLoading = true; });
 
-    final loadedBooks = await _databaseHelper.getBooks();
+    try {
+      print("LibraryScreen: _loadBooks - Calling databaseHelper.getBooks");
+      final loadedBooks = await _databaseHelper.getBooks();
+      print("LibraryScreen: _loadBooks - Got ${loadedBooks.length} books from DB.");
 
-    if (mounted) { // Check again before calling setState
-      setState(() {
-        books = loadedBooks;
-        isLoading = false;
-        print("LibraryScreen: Books loaded (${books.length}).");
-      });
-    } else {
-      print("LibraryScreen: Load books completed but widget was disposed.");
+      if (mounted) {
+        print("LibraryScreen: _loadBooks - Widget is mounted. Calling setState.");
+        setState(() {
+          books = loadedBooks;
+          isLoading = false;
+          print("LibraryScreen: _loadBooks - Inside setState. isLoading=false, books=${books.length}");
+        });
+      } else {
+        print("LibraryScreen: _loadBooks - Load books completed but widget was disposed.");
+      }
+    } catch (e, stackTrace) {
+      print("LibraryScreen: _loadBooks - Error loading books: $e");
+      print(stackTrace);
+      if (mounted) {
+        setState(() {
+          isLoading = false; // Stop loading indicator even on error
+          books = []; // Ensure books list is empty on error
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error loading library. Please try again.'), backgroundColor: Colors.red)
+        );
+      }
     }
   }
 
-  // Pick an EPUB file using file_picker and import it
+  // Pick an EPUB file and import it (with duplicate check and loading indicator)
   Future<void> _pickAndImportBook() async {
     print("LibraryScreen: Picking file...");
     FilePickerResult? result;
@@ -545,61 +580,50 @@ class _LibraryScreenState extends State<LibraryScreen> {
       String originalFileName = result.files.single.name;
       print("LibraryScreen: File picked: $originalFileName at ${sourceFile.path}");
 
-      try {
-        // Get the app's documents directory for persistent storage
-        Directory appDocDir = await getApplicationDocumentsDirectory();
-        String booksDir = path.join(appDocDir.path, 'epubs'); // Subdirectory for books
-        Directory dir = Directory(booksDir);
+      // Show loading indicator during import
+      if (mounted) setState(() => isLoading = true);
 
-        // Create the directory if it doesn't exist
+
+      try {
+        Directory appDocDir = await getApplicationDocumentsDirectory();
+        String booksDir = path.join(appDocDir.path, 'epubs');
+        Directory dir = Directory(booksDir);
         if (!await dir.exists()) {
           await dir.create(recursive: true);
-          print("LibraryScreen: Created directory $booksDir");
         }
-
-        // Create the destination path within the app's directory
         String newPath = path.join(booksDir, originalFileName);
 
-        // Check if a file with the same name already exists in the destination
-        if (await File(newPath).exists()) {
-          // Check if this exact file path is already in the database
-          final currentBooksInDb = await _databaseHelper.getBooks();
-          bool bookExists = currentBooksInDb.any((book) => book.filePath == newPath);
-          if (bookExists) {
-            print("LibraryScreen: Book file already exists and is in library: $newPath. Skipping import.");
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('This book is already in your library.')),
-              );
-            }
-            return; // Don't add the book again
-          } else {
-            // File exists, but not in DB (e.g., previous failed import) - Allow overwrite?
-            // For simplicity, we'll overwrite here. Consider asking the user.
-            print("LibraryScreen: File exists at $newPath but not in DB. Overwriting.");
+        // Check for duplicates based on target path before copying
+        final currentBooksInDb = await _databaseHelper.getBooks(); // Check DB *before* copy
+        bool bookExists = currentBooksInDb.any((book) => book.filePath == newPath);
+
+        if (bookExists) {
+          print("LibraryScreen: Book file path already exists in library: $newPath. Skipping import.");
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('This book is already in your library.')),
+            );
+            // Stop loading indicator if skipping
+            setState(() => isLoading = false);
           }
+          return; // Don't add the book again
         }
 
-        // Copy the file to the app's directory
+        // --- Proceed with copy and DB insert only if book is not duplicate ---
         print("LibraryScreen: Copying from ${sourceFile.path} to $newPath");
         await sourceFile.copy(newPath);
         print("LibraryScreen: File copied successfully.");
 
-        // Create Book object and insert into database
         Book newBook = Book(
-          // Extract title from filename, remove .epub extension
           title: originalFileName.replaceAll(RegExp(r'\.epub$', caseSensitive: false), ''),
-          filePath: newPath, // Store the path within the app's documents directory
-          // Initialize other fields with defaults
+          filePath: newPath,
           lastLocatorJson: '{}',
           totalReadingTime: 0,
           highlights: {},
         );
         await _databaseHelper.insertBook(newBook);
         print("LibraryScreen: Book saved to database.");
-
-        // Reload books to update the UI
-        await _loadBooks(); // Use await to ensure list is updated before potential snackbar
+        await _loadBooks(); // Reload the list (this will set isLoading = false)
 
       } catch (e) {
         print("LibraryScreen: Error copying or saving book: $e");
@@ -607,137 +631,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Error importing book: ${e.toString()}'))
           );
+          // Ensure loading indicator stops on error
+          setState(() => isLoading = false);
         }
       }
     } else {
       print("LibraryScreen: File picking cancelled.");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('File selection cancelled.')),
-        );
-      }
+      // No need for snackbar here, it's a normal user action
     }
-  }
-
-  // Show options for a specific book in a bottom sheet
-  void _showBookOptions(BuildContext context, Book book) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        // Calculate highlight count safely
-        int highlightCount = 0;
-        try {
-          highlightCount = book.highlights.values.expand((list) => list).length;
-        } catch (e) {
-          print("Error calculating highlights for book options ${book.id}: $e");
-        }
-
-        return SafeArea( // Ensure content is within safe area
-          child: Wrap( // Use Wrap for flexible layout
-            children: [
-              ListTile(
-                leading: const Icon(Icons.menu_book),
-                title: const Text('Continue Reading'),
-                onTap: () {
-                  Navigator.pop(context); // Close the bottom sheet
-                  _openReader(book);
-                },
-              ),
-              // Only show highlights option if there are any
-              if (highlightCount > 0)
-                ListTile(
-                  leading: const Icon(Icons.highlight_outlined),
-                  title: Text('View Highlights ($highlightCount)'),
-                  onTap: () {
-                    Navigator.pop(context); // Close the bottom sheet
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => HighlightsScreen(book: book),
-                      ),
-                    );
-                  },
-                ),
-              ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('Book Info'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showBookInfoDialog(book);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.delete_outline, color: Colors.red.shade700),
-                title: Text('Delete Book', style: TextStyle(color: Colors.red.shade700)),
-                onTap: () {
-                  Navigator.pop(context); // Close the bottom sheet
-                  _confirmAndDeleteBook(book); // Show confirmation dialog
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // Show detailed information about the book
-  void _showBookInfoDialog(Book book) {
-    // Calculate highlight count safely
-    int highlightCount = 0;
-    try {
-      highlightCount = book.highlights.values.expand((list) => list).length;
-    } catch (e) {
-      print("Error calculating highlights for book info ${book.id}: $e");
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(book.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        content: SingleChildScrollView( // Ensure content scrolls if long
-          child: ListBody(
-            children: <Widget>[
-              _buildInfoRow(Icons.timer_outlined, 'Read:', ReadingTimeTracker.formatTotalReadingTime(book.totalReadingTime)),
-              const SizedBox(height: 8),
-              _buildInfoRow(Icons.highlight_outlined, 'Highlights:', '$highlightCount'),
-              const SizedBox(height: 12),
-              Text('File Location:', style: TextStyle(color: Colors.grey.shade700, fontSize: 13, fontWeight: FontWeight.w500)),
-              Text(book.filePath, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-              const SizedBox(height: 8),
-              Text('Database ID:', style: TextStyle(color: Colors.grey.shade700, fontSize: 13, fontWeight: FontWeight.w500)),
-              Text(book.id?.toString() ?? 'N/A', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-            ],
-          ),
-        ),
-        actions: <Widget>[
-          TextButton(
-            child: const Text('Close'),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Helper for formatting info rows in the dialog
-  Widget _buildInfoRow(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: Colors.grey.shade700),
-        const SizedBox(width: 8),
-        Text(label, style: TextStyle(color: Colors.grey.shade700, fontSize: 14)),
-        const SizedBox(width: 5),
-        Expanded(child: Text(value, style: const TextStyle(fontSize: 14))),
-      ],
-    );
   }
 
   // Show confirmation dialog before deleting a book
   void _confirmAndDeleteBook(Book book) {
+    if (!mounted) return;
     showDialog(
       context: context,
-      barrierDismissible: false, // User must explicitly choose an action
+      barrierDismissible: false,
       builder: (BuildContext ctx) {
         return AlertDialog(
           title: const Text('Delete Book?'),
@@ -745,14 +654,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
-              onPressed: () => Navigator.of(ctx).pop(), // Close the dialog
+              onPressed: () => Navigator.of(ctx).pop(),
             ),
             TextButton(
               style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
               child: const Text('Delete Permanently'),
               onPressed: () async {
-                Navigator.of(ctx).pop(); // Close the dialog first
-                await _deleteBook(book); // Perform deletion
+                Navigator.of(ctx).pop();
+                await _deleteBook(book);
               },
             ),
           ],
@@ -761,7 +670,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  // Delete the book file and database record
+  // Delete the book file and database record (with loading indicator)
   Future<void> _deleteBook(Book book) async {
     print("LibraryScreen: Deleting book ID ${book.id} - ${book.title}");
     if (book.id == null) {
@@ -774,13 +683,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
 
-    // Show loading indicator during deletion
-    if (mounted) {
-      setState(() { isLoading = true; });
-    }
+    if (mounted) setState(() { isLoading = true; }); // Show loading during delete
 
     try {
-      // 1. Delete the actual EPUB file from storage
       final file = File(book.filePath);
       if (await file.exists()) {
         await file.delete();
@@ -788,13 +693,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       } else {
         print("LibraryScreen: File not found for deletion, proceeding to delete DB record: ${book.filePath}");
       }
-
-      // 2. Delete the book record from the database
       await _databaseHelper.deleteBook(book.id!);
       print("LibraryScreen: Deleted book record from database (ID: ${book.id}).");
-
-      // 3. Refresh the book list in the UI (will also stop loading indicator)
-      await _loadBooks(); // Use await
+      await _loadBooks(); // Refresh the list (also sets isLoading=false)
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -807,8 +708,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error deleting "${book.title}".')),
         );
-        // Ensure loading indicator stops even on error
-        setState(() { isLoading = false; });
+        setState(() { isLoading = false; }); // Ensure loading stops on error
       }
     }
   }
@@ -822,7 +722,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
       return;
     }
-    // Ensure file exists before trying to open
     final file = File(book.filePath);
     if (!file.existsSync()) {
       print("LibraryScreen: Error - Book file not found at ${book.filePath} before opening reader.");
@@ -836,47 +735,41 @@ class _LibraryScreenState extends State<LibraryScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        // Pass the full book object to the ReaderScreen
         builder: (context) => ReaderScreen(book: book),
       ),
     ).then((_) {
-      // When returning from ReaderScreen, reload books to reflect updates
-      // (like reading time or last position if it wasn't saved via stream)
       print("LibraryScreen: Returned from ReaderScreen. Reloading books.");
       _loadBooks();
     });
   }
 
+  // --- Build Method ---
   @override
   Widget build(BuildContext context) {
-    print("LibraryScreen: build");
+    print("LibraryScreen: build - isLoading: $isLoading, books.length: ${books.length}");
     return Scaffold(
       appBar: AppBar(
         title: const Text('My EPUB Library'),
         actions: [
-          // Settings Button
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
             onPressed: () {
-              print("LibraryScreen: Navigating to SettingsScreen.");
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const SettingsScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
               );
             },
           ),
         ],
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator()) // Show loading indicator
+          ? const Center(child: CircularProgressIndicator())
           : books.isEmpty
-          ? _buildEmptyLibraryView() // Show message if library is empty
-          : RefreshIndicator( // Add pull-to-refresh functionality
-        onRefresh: _loadBooks, // Call _loadBooks on pull down
-        child: _buildBookListView(), // Show the list of books
+          ? _buildEmptyLibraryView()
+          : RefreshIndicator(
+        onRefresh: _loadBooks,
+        child: _buildBookGridView(), // Use the Grid view
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _pickAndImportBook,
@@ -886,106 +779,132 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  // Widget to display when the library is empty
+  // Widget for the Empty Library View
   Widget _buildEmptyLibraryView() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.library_books_outlined, size: 70, color: Colors.grey),
-          const SizedBox(height: 20),
-          const Text(
-            'Your library is empty.',
-            style: TextStyle(fontSize: 18, color: Colors.grey),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Tap the "+" button to import an EPUB file.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          const SizedBox(height: 30),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.add_circle_outline),
-            label: const Text('Import First Book'),
-            onPressed: _pickAndImportBook,
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      child: Padding( // Add padding for better spacing on small screens
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.library_books_outlined, size: 70, color: Colors.grey),
+            const SizedBox(height: 20),
+            Text(
+              'Your library is empty.',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.grey),
             ),
-          )
-        ],
+            const SizedBox(height: 10),
+            Text(
+              'Tap the "+" button below to import an EPUB file from your device.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+            ),
+            const SizedBox(height: 30),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('Import First Book'),
+              onPressed: _pickAndImportBook,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                textStyle: Theme.of(context).textTheme.bodyLarge,
+              ),
+            )
+          ],
+        ),
       ),
     );
   }
 
-  // Widget to display the list of books
-  Widget _buildBookListView() {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0), // Add padding
+  // Widget to display the grid of books (Corrected Implementation)
+  Widget _buildBookGridView() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final crossAxisCount = (screenWidth / 140).floor().clamp(2, 5);
+    final double gridPadding = 12.0; // Padding around the grid
+    final double crossAxisSpacing = 12.0; // Horizontal space between items
+    final double mainAxisSpacing = 16.0; // Vertical space between items
+
+    // Calculate item width considering spacing
+    final double itemWidth = (screenWidth - (gridPadding * 2) - (crossAxisSpacing * (crossAxisCount - 1))) / crossAxisCount;
+
+    final double coverHeight = itemWidth * 1.4; // Height relative to width (adjust ratio as needed)
+    // --- Overflow Fix: Increased estimated text height ---
+    final double textHeight = 50; // Increased from 45 to give more space for 2 lines + padding
+
+    // Calculate aspect ratio for the whole item (Width / Total Height)
+    final double childAspectRatio = itemWidth / (coverHeight + textHeight);
+
+    print("LibraryScreen: Grid - ScreenWidth: $screenWidth, Cols: $crossAxisCount, ItemWidth: $itemWidth, CoverHeight: $coverHeight, TextHeightEst: $textHeight, ChildAspect: $childAspectRatio");
+
+    return GridView.builder(
+      key: const PageStorageKey('libraryGrid'), // Preserve scroll position
+      padding: EdgeInsets.all(gridPadding),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        childAspectRatio: childAspectRatio,
+        crossAxisSpacing: crossAxisSpacing,
+        mainAxisSpacing: mainAxisSpacing,
+      ),
       itemCount: books.length,
       itemBuilder: (context, index) {
-        final book = books[index];
-        // Calculate highlight count safely
-        int highlightCount = 0;
         try {
-          highlightCount = book.highlights.values.expand((list) => list).length;
-        } catch (e) {
-          print("Error calculating highlights for list item ${book.id}: $e");
-        }
-
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          child: ListTile(
-            leading: CircleAvatar( // Use CircleAvatar for book icon
-              backgroundColor: Theme.of(context).primaryColorLight,
-              child: Icon(Icons.book_outlined, color: Theme.of(context).primaryColorDark),
-            ),
-            title: Text(
-              book.title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              maxLines: 2, // Allow title to wrap
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Row( // Display time and highlights side-by-side
-                mainAxisAlignment: MainAxisAlignment.start,
+          final book = books[index];
+          return Material( // Use Material for InkWell splash effects
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _openReader(book),
+              onLongPress: () => _confirmAndDeleteBook(book),
+              borderRadius: BorderRadius.circular(8.0), // Match Ink clipping
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.start, // Align children to top
                 children: [
-                  // Reading Time Chip
-                  Chip(
-                    avatar: Icon(Icons.timer_outlined, size: 14, color: Colors.grey.shade700),
-                    label: Text(
-                      ReadingTimeTracker.formatTotalReadingTime(book.totalReadingTime),
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+                  // --- Cover Placeholder ---
+                  Ink( // Use Ink for decoration inside InkWell
+                    height: coverHeight, // Fixed height for the cover area
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      borderRadius: BorderRadius.circular(8.0),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                    visualDensity: VisualDensity.compact,
-                    backgroundColor: Colors.grey.shade200,
+                    child: Center(
+                      child: Icon(
+                        Icons.menu_book,
+                        size: 40.0,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.8),
+                      ),
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  // Highlights Chip
-                  Chip(
-                    avatar: Icon(Icons.highlight_outlined, size: 14, color: Colors.grey.shade700),
-                    label: Text(
-                      '$highlightCount', // Just the count
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+                  // --- Title ---
+                  Padding(
+                    // Reduced top padding slightly
+                    padding: const EdgeInsets.only(top: 6.0, left: 4.0, right: 4.0),
+                    child: Text(
+                      book.title,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        height: 1.25, // Slightly increased line height might also help
+                      ),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                    visualDensity: VisualDensity.compact,
-                    backgroundColor: Colors.grey.shade200,
                   ),
                 ],
               ),
             ),
-            trailing: IconButton(
-              icon: const Icon(Icons.more_vert),
-              tooltip: 'Book options',
-              onPressed: () => _showBookOptions(context, book),
+          );
+        } catch (e, stackTrace) {
+          print("LibraryScreen: Error in Grid itemBuilder at index $index: $e");
+          print(stackTrace);
+          // Error placeholder for specific item
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8.0),
+              border: Border.all(color: Colors.red),
             ),
-            onTap: () => _openReader(book), // Open reader on tap
-            contentPadding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-          ),
-        );
+            child: const Center(child: Icon(Icons.error_outline, color: Colors.red, size: 30)),
+          );
+        }
       },
     );
   }
@@ -1139,19 +1058,19 @@ class SettingsScreen extends StatelessWidget {
   Widget _buildAboutTile(BuildContext context) {
     return ListTile(
       title: const Text('App Version'),
-      subtitle: const Text('1.1.0 (Full Features)'), // Example version
+      subtitle: const Text('1.2.0 (Grid UI)'), // Example version
       leading: const Icon(Icons.info_outline),
       onTap: () {
         // Optional: Show licenses or more info dialog
         showAboutDialog(
           context: context,
           applicationName: 'Flutter EPUB Reader',
-          applicationVersion: '1.1.0',
-          applicationLegalese: '© 2025 Your Name/Company',
+          applicationVersion: '1.2.0',
+          applicationLegalese: '© 2025 Your Name/Company', // Replace as needed
           children: [
             const Padding(
               padding: EdgeInsets.only(top: 15),
-              child: Text('A simple EPUB reader built with Flutter.'),
+              child: Text('A simple EPUB reader built with Flutter and Vocsy EPUB Viewer.'),
             )
           ],
         );
@@ -1189,10 +1108,14 @@ class HighlightsScreen extends StatelessWidget {
           title: Text('Highlights: ${book.title}', overflow: TextOverflow.ellipsis)
       ),
       body: highlights.isEmpty
-          ? const Center( // Message when no highlights exist
-        child: Text(
-          'No highlights saved for this book yet.',
-          style: TextStyle(fontSize: 16, color: Colors.grey),
+          ? Center( // Message when no highlights exist
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Text(
+            'No highlights saved for this book yet.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey),
+          ),
         ),
       )
           : ListView.builder(
@@ -1210,12 +1133,13 @@ class HighlightsScreen extends StatelessWidget {
 
           // Use Card and ExpansionTile for better UI
           return Card(
-            margin: const EdgeInsets.symmetric(vertical: 6),
-            elevation: 1.5,
+            // Use Card defaults from theme
+            // margin: const EdgeInsets.symmetric(vertical: 6),
+            // elevation: 1.5,
             child: ExpansionTile(
               // Display chapter name or fallback
               title: Text(chapter.isNotEmpty ? chapter : 'Unknown Chapter',
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
               initiallyExpanded: true, // Keep chapters expanded by default
               childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -1226,18 +1150,16 @@ class HighlightsScreen extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.grey.shade800.withOpacity(0.5)
-                            : Theme.of(context).colorScheme.secondary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5))
+                      // Use theme colors for background/border
+                        color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.3))
                     ),
                     child: SelectableText( // Allow text selection
                       text,
-                      style: const TextStyle(
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontStyle: FontStyle.italic,
                         height: 1.4, // Improve readability
-                        fontSize: 14,
                       ),
                     ),
                     // Add copy/share actions here if needed later
@@ -1346,7 +1268,6 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     }
 
     // Optional: Attempt to close the native EPUB view if the library supports it explicitly.
-    // This might help release resources, but check the vocsy_epub_viewer documentation.
     // try {
     //   VocsyEpub.close(); // If such a method exists
     //   print("ReaderScreen: Called VocsyEpub.close()");
@@ -1415,21 +1336,16 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     print("  - Identifier: book_${widget.book.id}"); // Use unique identifier per book
     print("  - Scroll Direction: $scrollDirection"); // Use selected direction
     print("  - Night Mode: $isDarkMode");
-    // Log other settings if VocsyEpub uses them (Font size/family etc. might need CSS injection if supported)
-    // print("  - Font Size: ${readingSettings.fontSize}");
-    // print("  - Font Family: ${readingSettings.fontFamily}");
 
     try {
       // Configure the EPUB viewer settings
       VocsyEpub.setConfig(
-        themeColor: Theme.of(context).primaryColor, // Use app's theme color
+        themeColor: Theme.of(context).colorScheme.primary, // Use theme color
         identifier: "book_${widget.book.id}",      // Unique ID for the reader instance
         scrollDirection: scrollDirection,            // Apply user preference
         allowSharing: true,                        // Allow sharing text
         enableTts: false,                          // Text-to-speech disabled for simplicity
         nightMode: isDarkMode,                     // Sync with app's theme
-        // Note: Font size, family, line height might not be directly controllable via setConfig.
-        // Check VocsyEpub documentation for applying custom CSS or styles if needed.
       );
 
       print("ReaderScreen: Configuration set. Attempting to load last location...");
@@ -1573,11 +1489,9 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   Future<void> _updateBookProgress(Map<String, dynamic> locatorData) async {
     // Guard against null ID and ensure widget is still mounted
     if (widget.book.id == null || !mounted) {
-      print("ReaderScreen: Skipping progress update (ID null or unmounted).");
+      // print("ReaderScreen: Skipping progress update (ID null or unmounted)."); // Reduce log noise
       return;
     }
-
-    // print("ReaderScreen: _updateBookProgress called with locator for href: ${locatorData['href']}"); // Can be verbose
 
     try {
       // Encode the entire locator map to a JSON string for storage
@@ -1585,14 +1499,14 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
 
       // --- Optimization: Only update if the locator JSON has actually changed ---
       // Read the *current* book data from the database for the comparison.
-      // This avoids unnecessary writes if the location hasn't changed meaningfully.
       final db = await _databaseHelper.database;
+      // Use limit 1 for efficiency
       final currentBookData = await db.query('books', where: 'id = ?', whereArgs: [widget.book.id], limit: 1);
 
       if (currentBookData.isNotEmpty) {
         final String? currentLocatorJson = currentBookData.first['lastLocatorJson'] as String?;
         if (newLocatorJson != currentLocatorJson) {
-          print("ReaderScreen: New locator detected. Updating database.");
+          // print("ReaderScreen: New locator detected. Updating database."); // Reduce log noise
           // Update only the lastLocatorJson field in the database
           int count = await db.update(
             'books',
@@ -1600,10 +1514,8 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
             where: 'id = ?',
             whereArgs: [widget.book.id],
           );
-          print("ReaderScreen: Book progress updated in database. Rows affected: $count");
-        } else {
-          // print("ReaderScreen: Locator unchanged, skipping database update."); // Can be verbose
-        }
+          // print("ReaderScreen: Book progress updated in database. Rows affected: $count"); // Reduce log noise
+        } // else { // print("ReaderScreen: Locator unchanged, skipping database update."); } // Reduce log noise
       } else {
         print("ReaderScreen: Warning - Book ID ${widget.book.id} not found in DB during progress update check.");
       }
@@ -1624,23 +1536,20 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       // but serves as a fallback UI if that fails.
       return Scaffold(
         appBar: AppBar(title: const Text('Error')),
-        body: const Center(
-            child: Text('Failed to load book: Invalid data or file missing.',
-                style: TextStyle(color: Colors.red))),
+        body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text('Failed to load book: Invalid data or file missing.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            )),
       );
     }
 
     // Return a basic Scaffold. The VocsyEpub viewer displays as an overlay/native view.
     // The body content here is mostly a placeholder shown during loading or if errors occur *after* initState.
     return Scaffold(
-      // You might want an AppBar here, but often the native reader provides its own controls.
-      // appBar: AppBar(
-      //   title: Text(widget.book.title, overflow: TextOverflow.ellipsis),
-      //   leading: IconButton( // Ensure there's a way back if native view doesn't provide one
-      //       icon: Icon(Icons.arrow_back),
-      //       onPressed: () => Navigator.maybePop(context),
-      //   ),
-      // ),
+      // AppBar is usually not needed as the native reader provides controls
       body: Center(
         child: isLoading
             ? const Column( // State 1: Initial Loading
@@ -1654,16 +1563,14 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
             : _epubOpenedSuccessfully
         // State 2: EPUB Opened - Native view is likely active.
         // Show minimal content, maybe just a background color or a subtle indicator.
-        // Avoid showing "Loading" again as it might confuse the user if the native view is visible.
             ? Container(color: Theme.of(context).scaffoldBackgroundColor) // Or SizedBox.shrink()
         // State 3: Error *after* trying to load/open (e.g., VocsyEpub.open failed)
-        // This state might be brief if initState pops on critical failure.
-            : const Padding(
-          padding: EdgeInsets.all(20.0),
+            : Padding(
+          padding: const EdgeInsets.all(20.0),
           child: Text(
             'Failed to display the book.\nPlease try again later or check the file.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.redAccent),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
         ),
       ),
