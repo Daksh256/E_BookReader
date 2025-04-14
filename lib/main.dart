@@ -538,6 +538,33 @@ class _LibraryScreenState extends State<LibraryScreen> {
           // Optionally, assign a default cover for other books here
           // coverImagePath = 'assets/images/default_cover.png';
         }
+        if (bookNameWithoutExt.toLowerCase().startsWith('designing your life')) {
+          // Assign the hardcoded image path
+          coverImagePath = 'assets/images/designing your life.png'; // <<< YOUR IMAGE PATH HERE
+          print('Match found for "$originalFileName"! Assigning cover: $coverImagePath');
+        } else {
+          print('No match for "$originalFileName". No specific cover assigned.');
+          // Optionally, assign a default cover for other books here
+          // coverImagePath = 'assets/images/default_cover.png';
+        }
+        if (bookNameWithoutExt.toLowerCase().startsWith('discourses and selected')) {
+          // Assign the hardcoded image path
+          coverImagePath = 'assets/images/discourses_selected_cover.png'; // <<< YOUR IMAGE PATH HERE
+          print('Match found for "$originalFileName"! Assigning cover: $coverImagePath');
+        } else {
+          print('No match for "$originalFileName". No specific cover assigned.');
+          // Optionally, assign a default cover for other books here
+          // coverImagePath = 'assets/images/default_cover.png';
+        }
+        if (bookNameWithoutExt.toLowerCase().startsWith('the republic')) {
+          // Assign the hardcoded image path
+          coverImagePath = 'assets/images/the republic.png'; // <<< YOUR IMAGE PATH HERE
+          print('Match found for "$originalFileName"! Assigning cover: $coverImagePath');
+        } else {
+          print('No match for "$originalFileName". No specific cover assigned.');
+          // Optionally, assign a default cover for other books here
+          // coverImagePath = 'assets/images/default_cover.png';
+        }
         // --- End Hardcoded Image Check ---
 
 
