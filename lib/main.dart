@@ -675,9 +675,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
           : books.isEmpty
           ? _buildEmptyLibraryView()
           : RefreshIndicator( onRefresh: _loadBooks, child: _buildBookGridView(), ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _pickAndImportBook, tooltip: 'Import EPUB Book', child: const Icon(Icons.add),
-      ),
+      floatingActionButton: (!isLoading && books.isNotEmpty)
+          ? FloatingActionButton(
+        onPressed: _pickAndImportBook,
+        tooltip: 'Import EPUB Book',
+        child: const Icon(Icons.add),
+      )
+          : null,
     );
   }
 
