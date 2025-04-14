@@ -316,13 +316,29 @@ class ReadingSettings extends ChangeNotifier {
     bool changed = false;
     switch (key) {
       case _fontSizeKey:
-        if (_fontSize != value && value is double) { _fontSize = value; changed = true; } break;
+        if (_fontSize != value && value is double) {
+          _fontSize = value;
+          changed = true;
+        }
+        break;
       case _fontFamilyKey:
-        if (_fontFamily != value && value is String) { _fontFamily = value; changed = true; } break;
+        if (_fontFamily != value && value is String) {
+          _fontFamily = value;
+          changed = true;
+        }
+        break;
       case _lineHeightKey:
-        if (_lineHeight != value && value is double) { _lineHeight = value; changed = true; } break;
+        if (_lineHeight != value && value is double) {
+          _lineHeight = value;
+          changed = true;
+        }
+        break;
       case _scrollDirectionKey:
-        if (_scrollDirection != value && value is EpubScrollDirection) { _scrollDirection = value; changed = true; } break;
+        if (_scrollDirection != value && value is EpubScrollDirection) {
+          _scrollDirection = value;
+          changed = true;
+        }
+        break;
     }
     if (changed) {
       _saveSettings();
@@ -348,7 +364,9 @@ class ReadingSettings extends ChangeNotifier {
 }
 
 // --- Reading Time Tracker ---
-// (No changes needed in this class for the image feature)
+// NOTE: This logic needs adaptation as it's no longer tied to ReaderScreen's lifecycle.
+// You might need to manage its start/stop based on AppLifecycleState in LibraryScreen
+// or implement platform channels for more accuracy.
 class ReadingTimeTracker {
   final int bookId;
   final DatabaseHelper databaseHelper;
@@ -363,39 +381,61 @@ class ReadingTimeTracker {
     if (_timer?.isActive ?? false) return;
     _startTime = DateTime.now();
     _sessionSeconds = 0;
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) { _sessionSeconds++; });
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _sessionSeconds++;
+    });
     print("Started time tracking for book ID $bookId.");
   }
 
   Future<void> stopAndSaveTracking() async {
     if (!(_timer?.isActive ?? false) && _sessionSeconds == 0) {
-      print("Time tracking stop called for book ID $bookId, but no active session or time recorded.");
-      _timer?.cancel(); _timer = null; _resetTrackingState(); return;
+      print(
+          "Time tracking stop called for book ID $bookId, but no active session or time recorded.");
+      _timer?.cancel();
+      _timer = null;
+      _resetTrackingState();
+      return;
     }
-    _timer?.cancel(); _timer = null;
+    _timer?.cancel();
+    _timer = null;
     if (_startTime != null && _sessionSeconds > 0) {
-      print("Stopping time tracking for book ID $bookId. Session duration: $_sessionSeconds seconds.");
+      print(
+          "Stopping time tracking for book ID $bookId. Session duration: $_sessionSeconds seconds.");
       try {
-        await databaseHelper.updateBookMetadata(bookId, readingTime: _sessionSeconds);
+        await databaseHelper.updateBookMetadata(bookId,
+            readingTime: _sessionSeconds);
         print("Saved session time ($_sessionSeconds s) for book ID $bookId.");
-      } catch (e) { print("Error saving reading time for book ID $bookId: $e"); }
+      } catch (e) {
+        print("Error saving reading time for book ID $bookId: $e");
+      }
       _resetTrackingState();
     } else {
-      print("Time tracking stopped for book ID $bookId, but no time was recorded in this session.");
+      print(
+          "Time tracking stopped for book ID $bookId, but no time was recorded in this session.");
       _resetTrackingState();
     }
   }
 
-  void _resetTrackingState() { _sessionSeconds = 0; _startTime = null; }
+  void _resetTrackingState() {
+    _sessionSeconds = 0;
+    _startTime = null;
+  }
 
   static String formatTotalReadingTime(int totalSeconds) {
     if (totalSeconds <= 0) return '0 minutes';
     final duration = Duration(seconds: totalSeconds);
-    final hours = duration.inHours; final minutes = duration.inMinutes.remainder(60);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
     String result = '';
-    if (hours > 0) { result += '$hours hour${hours == 1 ? '' : 's'} '; }
-    if (minutes > 0 || hours == 0) { result += '$minutes minute${minutes == 1 ? '' : 's'}'; }
-    if (result.trim().isEmpty && totalSeconds > 0) { return '< 1 minute'; }
+    if (hours > 0) {
+      result += '$hours hour${hours == 1 ? '' : 's'} ';
+    }
+    if (minutes > 0 || hours == 0) {
+      result += '$minutes minute${minutes == 1 ? '' : 's'}';
+    }
+    if (result.trim().isEmpty && totalSeconds > 0) {
+      return '< 1 minute';
+    }
     return result.trim();
   }
 }
@@ -425,15 +465,25 @@ class EpubReaderApp extends StatelessWidget {
       title: 'Flutter EPUB Reader',
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.light),
+        colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.indigo, brightness: Brightness.light),
         fontFamily: readingSettings.fontFamily,
-        cardTheme: CardTheme( elevation: 1.0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), ),
+        cardTheme: CardTheme(
+          elevation: 1.0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        ),
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.dark),
+        colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.indigo, brightness: Brightness.dark),
         fontFamily: readingSettings.fontFamily,
-        cardTheme: CardTheme( elevation: 1.0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), ),
+        cardTheme: CardTheme(
+          elevation: 1.0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        ),
       ),
       themeMode: ThemeMode.system,
       home: const LibraryScreen(),
@@ -454,6 +504,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   final DatabaseHelper _databaseHelper = DatabaseHelper();
   List<Book> books = [];
   bool isLoading = true;
+  StreamSubscription? _locatorSubscription; // Moved from ReaderScreen
 
   @override
   void initState() {
@@ -462,25 +513,49 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _loadBooks();
   }
 
+  // --- Add this dispose method to your _LibraryScreenState ---
+  @override
+  void dispose() {
+    _locatorSubscription?.cancel(); // Cancel listener when screen is disposed
+    print("LibraryScreen: Disposed, locator stream listener cancelled.");
+    super.dispose();
+  }
+  // ----------------------------------------------------------
+
+
   Future<void> _loadBooks() async {
     print("LibraryScreen: _loadBooks - Start. Mounted: $mounted");
     if (!mounted) return;
-    setState(() { isLoading = true; });
+    setState(() {
+      isLoading = true;
+    });
     try {
       print("LibraryScreen: _loadBooks - Calling databaseHelper.getBooks");
       final loadedBooks = await _databaseHelper.getBooks();
-      print("LibraryScreen: _loadBooks - Got ${loadedBooks.length} books from DB.");
+      print(
+          "LibraryScreen: _loadBooks - Got ${loadedBooks.length} books from DB.");
       if (mounted) {
-        print("LibraryScreen: _loadBooks - Widget is mounted. Calling setState.");
-        setState(() { books = loadedBooks; isLoading = false; });
+        print(
+            "LibraryScreen: _loadBooks - Widget is mounted. Calling setState.");
+        setState(() {
+          books = loadedBooks;
+          isLoading = false;
+        });
       } else {
-        print("LibraryScreen: _loadBooks - Load books completed but widget was disposed.");
+        print(
+            "LibraryScreen: _loadBooks - Load books completed but widget was disposed.");
       }
     } catch (e, stackTrace) {
-      print("LibraryScreen: _loadBooks - Error loading books: $e"); print(stackTrace);
+      print("LibraryScreen: _loadBooks - Error loading books: $e");
+      print(stackTrace);
       if (mounted) {
-        setState(() { isLoading = false; books = []; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar( content: Text('Error loading library. Please try again.'), backgroundColor: Colors.red));
+        setState(() {
+          isLoading = false;
+          books = [];
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Error loading library. Please try again.'),
+            backgroundColor: Colors.red));
       }
     }
   }
@@ -490,10 +565,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
     print("LibraryScreen: Picking file...");
     FilePickerResult? result;
     try {
-      result = await FilePicker.platform.pickFiles( type: FileType.custom, allowedExtensions: ['epub'], );
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['epub'],
+      );
     } catch (e) {
       print("LibraryScreen: File picking error: $e");
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar( SnackBar(content: Text('Error picking file: ${e.toString()}'))); }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error picking file: ${e.toString()}')));
+      }
       return;
     }
 
@@ -508,16 +589,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
         Directory appDocDir = await getApplicationDocumentsDirectory();
         String booksDir = path.join(appDocDir.path, 'epubs');
         Directory dir = Directory(booksDir);
-        if (!await dir.exists()) { await dir.create(recursive: true); }
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
         String newPath = path.join(booksDir, originalFileName);
 
         final currentBooksInDb = await _databaseHelper.getBooks();
-        bool bookExists = currentBooksInDb.any((book) => book.filePath == newPath);
+        bool bookExists =
+        currentBooksInDb.any((book) => book.filePath == newPath);
 
         if (bookExists) {
-          print("LibraryScreen: Book file path already exists in library: $newPath. Skipping import.");
+          print(
+              "LibraryScreen: Book file path already exists in library: $newPath. Skipping import.");
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('This book is already in your library.')), );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text('This book is already in your library.')),
+            );
             setState(() => isLoading = false); // Stop loading
           }
           return;
@@ -526,40 +614,32 @@ class _LibraryScreenState extends State<LibraryScreen> {
         // --- Start Hardcoded Image Check ---
         String? coverImagePath; // Initialize cover image path as null
         // Extract filename without extension for robust comparison
-        String bookNameWithoutExt = path.basenameWithoutExtension(originalFileName);
+        String bookNameWithoutExt =
+        path.basenameWithoutExtension(originalFileName);
 
         // Check if the book name *starts with* "Discourses and selected" (case-insensitive)
-        if (bookNameWithoutExt.toLowerCase().startsWith('discourses and selected')) {
+        if (bookNameWithoutExt
+            .toLowerCase()
+            .startsWith('discourses and selected')) {
           // Assign the hardcoded image path
-          coverImagePath = 'assets/images/discourses_selected_cover.png'; // <<< YOUR IMAGE PATH HERE
-          print('Match found for "$originalFileName"! Assigning cover: $coverImagePath');
-        } else {
-          print('No match for "$originalFileName". No specific cover assigned.');
-          // Optionally, assign a default cover for other books here
-          // coverImagePath = 'assets/images/default_cover.png';
-        }
-        if (bookNameWithoutExt.toLowerCase().startsWith('designing your life')) {
+          coverImagePath =
+          'assets/images/discourses_selected_cover.png'; // <<< YOUR IMAGE PATH HERE
+          print(
+              'Match found for "$originalFileName"! Assigning cover: $coverImagePath');
+        } else if (bookNameWithoutExt
+            .toLowerCase()
+            .startsWith('designing your life')) {
           // Assign the hardcoded image path
-          coverImagePath = 'assets/images/designing your life.png'; // <<< YOUR IMAGE PATH HERE
-          print('Match found for "$originalFileName"! Assigning cover: $coverImagePath');
-        } else {
-          print('No match for "$originalFileName". No specific cover assigned.');
-          // Optionally, assign a default cover for other books here
-          // coverImagePath = 'assets/images/default_cover.png';
-        }
-        if (bookNameWithoutExt.toLowerCase().startsWith('discourses and selected')) {
+          coverImagePath =
+          'assets/images/designing your life.png'; // <<< YOUR IMAGE PATH HERE
+          print(
+              'Match found for "$originalFileName"! Assigning cover: $coverImagePath');
+        } else if (bookNameWithoutExt.toLowerCase().startsWith('the republic')) {
           // Assign the hardcoded image path
-          coverImagePath = 'assets/images/discourses_selected_cover.png'; // <<< YOUR IMAGE PATH HERE
-          print('Match found for "$originalFileName"! Assigning cover: $coverImagePath');
-        } else {
-          print('No match for "$originalFileName". No specific cover assigned.');
-          // Optionally, assign a default cover for other books here
-          // coverImagePath = 'assets/images/default_cover.png';
-        }
-        if (bookNameWithoutExt.toLowerCase().startsWith('the republic')) {
-          // Assign the hardcoded image path
-          coverImagePath = 'assets/images/the republic.png'; // <<< YOUR IMAGE PATH HERE
-          print('Match found for "$originalFileName"! Assigning cover: $coverImagePath');
+          coverImagePath =
+          'assets/images/the republic.png'; // <<< YOUR IMAGE PATH HERE
+          print(
+              'Match found for "$originalFileName"! Assigning cover: $coverImagePath');
         } else {
           print('No match for "$originalFileName". No specific cover assigned.');
           // Optionally, assign a default cover for other books here
@@ -567,14 +647,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
         }
         // --- End Hardcoded Image Check ---
 
-
         print("LibraryScreen: Copying from ${sourceFile.path} to $newPath");
         await sourceFile.copy(newPath);
         print("LibraryScreen: File copied successfully.");
 
         // Create Book object including the determined coverImagePath
         Book newBook = Book(
-          title: originalFileName.replaceAll( RegExp(r'\.epub$', caseSensitive: false), ''),
+          title: originalFileName.replaceAll(
+              RegExp(r'\.epub$', caseSensitive: false), ''),
           filePath: newPath,
           lastLocatorJson: '{}',
           totalReadingTime: 0,
@@ -588,7 +668,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       } catch (e) {
         print("LibraryScreen: Error copying or saving book: $e");
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar( SnackBar(content: Text('Error importing book: ${e.toString()}')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Error importing book: ${e.toString()}')));
           setState(() => isLoading = false); // Stop loading on error
         }
       }
@@ -598,20 +679,188 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
 
+  // --- UPDATED: _openReader method ---
+  void _openReader(Book book) async { // Make the method async
+    if (book.id == null) {
+      print("LibraryScreen: Cannot open book, ID is null for title '${book.title}'");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: Book data is incomplete. Cannot open.')),
+        );
+      }
+      return;
+    }
+
+    final file = File(book.filePath);
+    if (!file.existsSync()) {
+      print("LibraryScreen: Error - Book file not found at ${book.filePath} before opening reader.");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: Book file is missing or moved. Cannot open.')),
+        );
+      }
+      return;
+    }
+
+    print("LibraryScreen: Opening reader directly for book ID ${book.id} - ${book.title}");
+
+    // --- Logic moved from ReaderScreen._openEpub ---
+    final readingSettings = Provider.of<ReadingSettings>(context, listen: false);
+    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final EpubScrollDirection scrollDirection = readingSettings.scrollDirection;
+
+    print("LibraryScreen: Configuring VocsyEpub...");
+    print("  - Identifier: book_${book.id}");
+    print("  - Scroll Direction: $scrollDirection");
+    print("  - Night Mode: $isDarkMode");
+
+    try {
+      VocsyEpub.setConfig(
+        themeColor: Theme.of(context).colorScheme.primary,
+        identifier: "book_${book.id}", // Use book-specific identifier
+        scrollDirection: scrollDirection,
+        allowSharing: true,
+        enableTts: false, // Set as needed
+        nightMode: isDarkMode,
+      );
+
+      print("LibraryScreen: Configuration set. Attempting to load last location...");
+      EpubLocator? lastKnownLocator;
+      if (book.lastLocatorJson.isNotEmpty && book.lastLocatorJson != '{}') {
+        print("LibraryScreen: Found saved locator JSON: ${book.lastLocatorJson}");
+        try {
+          Map<String, dynamic> decodedLocatorMap = json.decode(book.lastLocatorJson);
+          // Basic validation, adjust if your locator structure is different
+          if (decodedLocatorMap.containsKey('bookId') && decodedLocatorMap.containsKey('href') && decodedLocatorMap.containsKey('created') && decodedLocatorMap.containsKey('locations') && decodedLocatorMap['locations'] is Map && decodedLocatorMap['locations'].containsKey('cfi')) {
+            lastKnownLocator = EpubLocator.fromJson(decodedLocatorMap);
+            print("LibraryScreen: Successfully decoded last location.");
+          } else {
+            print("LibraryScreen: Warning - Saved locator JSON has missing/invalid fields. Opening from start.");
+          }
+        } catch (e) {
+          print("LibraryScreen: Error decoding locator JSON '${book.lastLocatorJson}': $e. Opening from start.");
+          lastKnownLocator = null;
+        }
+      } else {
+        print("LibraryScreen: No valid saved location found. Opening from start.");
+      }
+
+      print("LibraryScreen: Calling VocsyEpub.open with path: ${book.filePath} and locator: ${lastKnownLocator != null}");
+      // Directly open the native viewer
+      VocsyEpub.open(
+        book.filePath,
+        lastLocation: lastKnownLocator,
+      );
+
+      // --- Setup locator listener (Consider a more robust state management solution for production) ---
+      _setupLocatorListener(book.id!); // Pass book ID
+      // Note: Time tracking logic would also need to be initiated here if needed outside a dedicated screen.
+      // ReadingTimeTracker _timeTracker = ReadingTimeTracker(bookId: book.id!, databaseHelper: _databaseHelper);
+      // _timeTracker.startTracking(); // Example if you adapt ReadingTimeTracker
+
+      // --- Removed the Navigator.push and .then(_loadBooks) ---
+      // When the native view closes, it will return control here,
+      // and the standard Flutter lifecycle (onResume) might trigger UI updates if needed.
+      // If you specifically need to refresh the book list *immediately* after closing,
+      // you might need to listen to AppLifecycleState changes in LibraryScreen's State.
+
+    } catch (e) {
+      print("LibraryScreen: CRITICAL Error during VocsyEpub configuration or open: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening EPUB: ${e.toString()}'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // --- Add this method to _LibraryScreenState (adapted from ReaderScreen) ---
+  void _setupLocatorListener(int bookId) {
+    print("LibraryScreen: Setting up locator stream listener for book ID $bookId");
+    // Cancel previous listener if any
+    _locatorSubscription?.cancel();
+    _locatorSubscription = VocsyEpub.locatorStream.listen(
+          (locatorData) async { // Make async to use await
+        Map<String, dynamic>? locatorMap;
+        // Basic parsing, adjust as needed
+        if (locatorData is String) { try { locatorMap = json.decode(locatorData); } catch (e) { print("LibraryScreen: Error decoding locator string: $e. Data: $locatorData"); return; } }
+        else if (locatorData is Map) { try { locatorMap = Map<String, dynamic>.from(locatorData); } catch (e) { print("LibraryScreen: Error converting received map: $e. Data: $locatorData"); return; } }
+
+        if (locatorMap != null) {
+          // Basic validation
+          if (locatorMap.containsKey('bookId') && locatorMap.containsKey('href') && locatorMap.containsKey('locations') && locatorMap['locations'] is Map && locatorMap['locations'].containsKey('cfi')) {
+            await _updateBookProgress(bookId, locatorMap); // Pass bookId
+          } else { print("LibraryScreen: Warning - Received locator map is missing required fields: $locatorMap"); }
+        } else { print("LibraryScreen: Received locator data in unrecognized format: ${locatorData?.runtimeType}"); }
+      },
+      onError: (error) { print("LibraryScreen: Error in locator stream: $error"); /* Handle error */ },
+      onDone: () { print("LibraryScreen: Locator stream closed (onDone). Reader likely dismissed."); /* Handle cleanup if needed */ },
+      cancelOnError: false,
+    );
+    print("LibraryScreen: Locator stream listener is now active.");
+  }
+
+  // --- Add this method to _LibraryScreenState (adapted from ReaderScreen) ---
+  Future<void> _updateBookProgress(int bookId, Map<String, dynamic> locatorData) async {
+    if (!mounted) { return; } // Check if the screen is still active
+    try {
+      final String newLocatorJson = json.encode(locatorData);
+      // Use your existing _databaseHelper instance
+      final db = await _databaseHelper.database;
+      // Check current locator to avoid unnecessary writes
+      final currentBookData = await db.query('books', where: 'id = ?', whereArgs: [bookId], limit: 1);
+      if (currentBookData.isNotEmpty) {
+        final String? currentLocatorJson = currentBookData.first['lastLocatorJson'] as String?;
+        if (newLocatorJson != currentLocatorJson) {
+          print("LibraryScreen: Updating locator for book ID $bookId");
+          int count = await db.update(
+            'books',
+            {'lastLocatorJson': newLocatorJson},
+            where: 'id = ?',
+            whereArgs: [bookId],
+          );
+          // Optionally update the local 'books' list state if needed for immediate UI feedback
+          // This depends on how your state management is set up
+          int bookIndex = books.indexWhere((b) => b.id == bookId);
+          if (bookIndex != -1 && mounted) {
+            setState(() {
+              books[bookIndex] = books[bookIndex].copyWith(lastLocatorJson: newLocatorJson);
+            });
+          }
+        }
+      } else {
+        print("LibraryScreen: Warning - Book ID $bookId not found in DB during progress update check.");
+      }
+    } catch (e) {
+      print("LibraryScreen: Error encoding or saving book progress for ID $bookId: $e");
+    }
+  }
+  // --- End of methods to add/replace in _LibraryScreenState ---
+
+
   void _confirmAndDeleteBook(Book book) {
     if (!mounted) return;
     showDialog(
-      context: context, barrierDismissible: false,
+      context: context,
+      barrierDismissible: false,
       builder: (BuildContext ctx) {
         return AlertDialog(
           title: const Text('Delete Book?'),
-          content: Text('Are you sure you want to permanently delete "${book.title}"?\n\nThis will remove the book file, reading progress, and all associated highlights.'),
+          content: Text(
+              'Are you sure you want to permanently delete "${book.title}"?\n\nThis will remove the book file, reading progress, and all associated highlights.'),
           actions: <Widget>[
-            TextButton( child: const Text('Cancel'), onPressed: () => Navigator.of(ctx).pop(), ),
             TextButton(
-              style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(ctx).pop(),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                  foregroundColor: Colors.red.shade700),
               child: const Text('Delete Permanently'),
-              onPressed: () async { Navigator.of(ctx).pop(); await _deleteBook(book); },
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                await _deleteBook(book);
+              },
             ),
           ],
         );
@@ -623,50 +872,63 @@ class _LibraryScreenState extends State<LibraryScreen> {
     print("LibraryScreen: Deleting book ID ${book.id} - ${book.title}");
     if (book.id == null) {
       print("Error: Cannot delete book with null ID.");
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Error: Cannot delete book without an ID.')), ); } return;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Error: Cannot delete book without an ID.')), );
+      }
+      return;
     }
     if (mounted) setState(() { isLoading = true; });
     try {
       final file = File(book.filePath);
-      if (await file.exists()) { await file.delete(); print("LibraryScreen: Deleted file ${book.filePath}"); }
-      else { print("LibraryScreen: File not found for deletion, proceeding to delete DB record: ${book.filePath}"); }
+      if (await file.exists()) {
+        await file.delete();
+        print("LibraryScreen: Deleted file ${book.filePath}");
+      } else {
+        print(
+            "LibraryScreen: File not found for deletion, proceeding to delete DB record: ${book.filePath}");
+      }
       await _databaseHelper.deleteBook(book.id!);
-      print("LibraryScreen: Deleted book record from database (ID: ${book.id}).");
+      print(
+          "LibraryScreen: Deleted book record from database (ID: ${book.id}).");
       await _loadBooks();
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar( SnackBar(content: Text('"${book.title}" deleted successfully.')), ); }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('"${book.title}" deleted successfully.')),
+        );
+      }
     } catch (e) {
       print("LibraryScreen: Error deleting book ID ${book.id}: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar( SnackBar(content: Text('Error deleting "${book.title}".')), );
-        setState(() { isLoading = false; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting "${book.title}".')),
+        );
+        setState(() {
+          isLoading = false;
+        });
       }
     }
   }
 
-  void _openReader(Book book) {
-    if (book.id == null) {
-      print("LibraryScreen: Cannot open book, ID is null for title '${book.title}'");
-      ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Error: Book data is incomplete. Cannot open.')), ); return;
-    }
-    final file = File(book.filePath);
-    if (!file.existsSync()) {
-      print("LibraryScreen: Error - Book file not found at ${book.filePath} before opening reader.");
-      ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Error: Book file is missing or moved. Cannot open.')), ); return;
-    }
-    print("LibraryScreen: Opening reader for book ID ${book.id} - ${book.title}");
-    Navigator.push( context, MaterialPageRoute( builder: (context) => ReaderScreen(book: book), ), ).then((_) { print("LibraryScreen: Returned from ReaderScreen. Reloading books."); _loadBooks(); });
-  }
 
   @override
   Widget build(BuildContext context) {
-    print("LibraryScreen: build - isLoading: $isLoading, books.length: ${books.length}");
+    print(
+        "LibraryScreen: build - isLoading: $isLoading, books.length: ${books.length}");
     return Scaffold(
       appBar: AppBar(
         title: const Text('My EPUB Library'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings_outlined), tooltip: 'Settings',
-            onPressed: () { Navigator.push( context, MaterialPageRoute(builder: (context) => const SettingsScreen()), ); },
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const SettingsScreen()),
+              );
+            },
           ),
         ],
       ),
@@ -674,7 +936,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : books.isEmpty
           ? _buildEmptyLibraryView()
-          : RefreshIndicator( onRefresh: _loadBooks, child: _buildBookGridView(), ),
+          : RefreshIndicator(
+        onRefresh: _loadBooks,
+        child: _buildBookGridView(),
+      ),
       floatingActionButton: (!isLoading && books.isNotEmpty)
           ? FloatingActionButton(
         onPressed: _pickAndImportBook,
@@ -689,12 +954,40 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(20.0),
-        child: Column( mainAxisAlignment: MainAxisAlignment.center, children: [
-          const Icon(Icons.library_books_outlined, size: 70, color: Colors.grey), const SizedBox(height: 20),
-          Text( 'Your library is empty.', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.grey), ), const SizedBox(height: 10),
-          Text( 'Tap the "+" button below to import an EPUB file from your device.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey), ), const SizedBox(height: 30),
-          ElevatedButton.icon( icon: const Icon(Icons.add_circle_outline), label: const Text('Import First Book'), onPressed: _pickAndImportBook, style: ElevatedButton.styleFrom( padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), textStyle: Theme.of(context).textTheme.bodyLarge, ), )
-        ],
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.library_books_outlined,
+                size: 70, color: Colors.grey),
+            const SizedBox(height: 20),
+            Text(
+              'Your library is empty.',
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineSmall
+                  ?.copyWith(color: Colors.grey),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Tap the "+" button below to import an EPUB file from your device.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: Colors.grey),
+            ),
+            const SizedBox(height: 30),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('Import First Book'),
+              onPressed: _pickAndImportBook,
+              style: ElevatedButton.styleFrom(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                textStyle: Theme.of(context).textTheme.bodyLarge,
+              ),
+            )
+          ],
         ),
       ),
     );
@@ -707,12 +1000,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final double gridPadding = 12.0;
     final double crossAxisSpacing = 12.0;
     final double mainAxisSpacing = 16.0;
-    final double itemWidth = (screenWidth - (gridPadding * 2) - (crossAxisSpacing * (crossAxisCount - 1))) / crossAxisCount;
+    final double itemWidth = (screenWidth -
+        (gridPadding * 2) -
+        (crossAxisSpacing * (crossAxisCount - 1))) /
+        crossAxisCount;
     final double coverHeight = itemWidth * 1.4; // Cover aspect ratio
     final double textHeight = 50; // Estimated text height
     final double childAspectRatio = itemWidth / (coverHeight + textHeight);
 
-    print("LibraryScreen: Grid - ScreenWidth: $screenWidth, Cols: $crossAxisCount, ItemWidth: $itemWidth, CoverHeight: $coverHeight, TextHeightEst: $textHeight, ChildAspect: $childAspectRatio");
+    print(
+        "LibraryScreen: Grid - ScreenWidth: $screenWidth, Cols: $crossAxisCount, ItemWidth: $itemWidth, CoverHeight: $coverHeight, TextHeightEst: $textHeight, ChildAspect: $childAspectRatio");
 
     return GridView.builder(
       key: const PageStorageKey('libraryGrid'),
@@ -748,26 +1045,33 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       // border: Border.all(color: Theme.of(context).dividerColor, width: 0.5),
                     ),
                     // --- Conditional Image/Placeholder Display ---
-                    child: ClipRRect( // Clip the image to the rounded corners
+                    child: ClipRRect(
+                      // Clip the image to the rounded corners
                       borderRadius: BorderRadius.circular(8.0),
-                      child: (book.coverImagePath != null && book.coverImagePath!.isNotEmpty)
+                      child: (book.coverImagePath != null &&
+                          book.coverImagePath!.isNotEmpty)
                           ? Image.asset(
                         book.coverImagePath!,
                         fit: BoxFit.cover, // Make image fill the container
                         // Add error builder for robustness
                         errorBuilder: (context, error, stackTrace) {
-                          print("Error loading asset: ${book.coverImagePath} - $error");
+                          print(
+                              "Error loading asset: ${book.coverImagePath} - $error");
                           // Fallback placeholder on asset load error
                           return Center(
                             child: Icon(
                               Icons.broken_image_outlined, // Icon indicating load error
                               size: 40.0,
-                              color: Theme.of(context).colorScheme.error.withOpacity(0.7),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .error
+                                  .withOpacity(0.7),
                             ),
                           );
                         },
                       )
-                          : Center( // Default placeholder if no coverImagePath
+                          : Center(
+                        // Default placeholder if no coverImagePath
                         child: Icon(
                           Icons.menu_book, // Standard book icon
                           size: 40.0,
@@ -782,7 +1086,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ),
                   // --- Title ---
                   Padding(
-                    padding: const EdgeInsets.only(top: 6.0, left: 4.0, right: 4.0),
+                    padding: const EdgeInsets.only(
+                        top: 6.0, left: 4.0, right: 4.0),
                     child: Text(
                       book.title,
                       textAlign: TextAlign.center,
@@ -799,10 +1104,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
           );
         } catch (e, stackTrace) {
-          print("LibraryScreen: Error in Grid itemBuilder at index $index: $e"); print(stackTrace);
-          return Container( // Error placeholder for the grid item itself
-            decoration: BoxDecoration( color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8.0), border: Border.all(color: Colors.red), ),
-            child: const Center( child: Icon(Icons.error_outline, color: Colors.red, size: 30)),
+          print(
+              "LibraryScreen: Error in Grid itemBuilder at index $index: $e");
+          print(stackTrace);
+          return Container(
+            // Error placeholder for the grid item itself
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8.0),
+              border: Border.all(color: Colors.red),
+            ),
+            child: const Center(
+                child: Icon(Icons.error_outline, color: Colors.red, size: 30)),
           );
         }
       },
@@ -822,16 +1135,18 @@ class SettingsScreen extends StatelessWidget {
       builder: (context, readingSettings, child) {
         return Scaffold(
           appBar: AppBar(title: const Text('Settings')),
-          body: ListView( padding: const EdgeInsets.all(8.0), children: [
-            _buildSectionHeader(context, 'Appearance'),
-            _buildFontSizeSetting(context, readingSettings),
-            _buildLineHeightSetting(context, readingSettings),
-            _buildFontFamilySetting(context, readingSettings),
-            _buildScrollDirectionSetting(context, readingSettings),
-            const Divider(height: 20, thickness: 1),
-            _buildSectionHeader(context, 'About'),
-            _buildAboutTile(context),
-          ],
+          body: ListView(
+            padding: const EdgeInsets.all(8.0),
+            children: [
+              _buildSectionHeader(context, 'Appearance'),
+              _buildFontSizeSetting(context, readingSettings),
+              _buildLineHeightSetting(context, readingSettings),
+              _buildFontFamilySetting(context, readingSettings),
+              _buildScrollDirectionSetting(context, readingSettings),
+              const Divider(height: 20, thickness: 1),
+              _buildSectionHeader(context, 'About'),
+              _buildAboutTile(context),
+            ],
           ),
         );
       },
@@ -841,65 +1156,130 @@ class SettingsScreen extends StatelessWidget {
   Widget _buildSectionHeader(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-      child: Text( title, style: Theme.of(context).textTheme.titleMedium?.copyWith( color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600, ), ),
-    );
-  }
-
-  Widget _buildFontSizeSetting(BuildContext context, ReadingSettings settings) {
-    return ListTile(
-      title: const Text('Font Size'), subtitle: Text('${settings.fontSize.toInt()} pt'),
-      trailing: SizedBox( width: MediaQuery.of(context).size.width * 0.5,
-        child: Slider( value: settings.fontSize, min: 12, max: 32, divisions: 20, label: '${settings.fontSize.toInt()}',
-          onChanged: (value) { settings.updateSetting(ReadingSettings._fontSizeKey, value); },
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
   }
 
-  Widget _buildLineHeightSetting( BuildContext context, ReadingSettings settings) {
+  Widget _buildFontSizeSetting(
+      BuildContext context, ReadingSettings settings) {
     return ListTile(
-      title: const Text('Line Height'), subtitle: Text(settings.lineHeight.toStringAsFixed(1)),
-      trailing: SizedBox( width: MediaQuery.of(context).size.width * 0.5,
-        child: Slider( value: settings.lineHeight, min: 1.0, max: 2.0, divisions: 10, label: settings.lineHeight.toStringAsFixed(1),
-          onChanged: (value) { settings.updateSetting(ReadingSettings._lineHeightKey, value); },
+      title: const Text('Font Size'),
+      subtitle: Text('${settings.fontSize.toInt()} pt'),
+      trailing: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.5,
+        child: Slider(
+          value: settings.fontSize,
+          min: 12,
+          max: 32,
+          divisions: 20,
+          label: '${settings.fontSize.toInt()}',
+          onChanged: (value) {
+            settings.updateSetting(ReadingSettings._fontSizeKey, value);
+          },
         ),
       ),
     );
   }
 
-  Widget _buildFontFamilySetting( BuildContext context, ReadingSettings settings) {
-    const List<String> availableFonts = [ 'Roboto', 'Merriweather', 'OpenSans', 'Lato', 'Lora', 'SourceSerifPro' ];
+  Widget _buildLineHeightSetting(
+      BuildContext context, ReadingSettings settings) {
+    return ListTile(
+      title: const Text('Line Height'),
+      subtitle: Text(settings.lineHeight.toStringAsFixed(1)),
+      trailing: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.5,
+        child: Slider(
+          value: settings.lineHeight,
+          min: 1.0,
+          max: 2.0,
+          divisions: 10,
+          label: settings.lineHeight.toStringAsFixed(1),
+          onChanged: (value) {
+            settings.updateSetting(ReadingSettings._lineHeightKey, value);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFontFamilySetting(
+      BuildContext context, ReadingSettings settings) {
+    const List<String> availableFonts = [
+      'Roboto',
+      'Merriweather',
+      'OpenSans',
+      'Lato',
+      'Lora',
+      'SourceSerifPro'
+    ];
     return ListTile(
       title: const Text('Font Family'),
       trailing: DropdownButton<String>(
         value: settings.fontFamily,
-        items: availableFonts.map((String fontName) { return DropdownMenuItem<String>( value: fontName, child: Text(fontName), ); }).toList(),
-        onChanged: (value) { if (value != null) { settings.updateSetting(ReadingSettings._fontFamilyKey, value); } },
+        items: availableFonts.map((String fontName) {
+          return DropdownMenuItem<String>(
+            value: fontName,
+            child: Text(fontName),
+          );
+        }).toList(),
+        onChanged: (value) {
+          if (value != null) {
+            settings.updateSetting(ReadingSettings._fontFamilyKey, value);
+          }
+        },
       ),
     );
   }
 
-  Widget _buildScrollDirectionSetting( BuildContext context, ReadingSettings settings) {
+  Widget _buildScrollDirectionSetting(
+      BuildContext context, ReadingSettings settings) {
     return ListTile(
       title: const Text('Scroll Direction'),
       trailing: DropdownButton<EpubScrollDirection>(
         value: settings.scrollDirection,
         items: const [
-          DropdownMenuItem( value: EpubScrollDirection.HORIZONTAL, child: Text('Horizontal (Pages)'), ),
-          DropdownMenuItem( value: EpubScrollDirection.VERTICAL, child: Text('Vertical (Scroll)'), ),
+          DropdownMenuItem(
+            value: EpubScrollDirection.HORIZONTAL,
+            child: Text('Horizontal (Pages)'),
+          ),
+          DropdownMenuItem(
+            value: EpubScrollDirection.VERTICAL,
+            child: Text('Vertical (Scroll)'),
+          ),
         ],
-        onChanged: (value) { if (value != null) { settings.updateSetting(ReadingSettings._scrollDirectionKey, value); } },
+        onChanged: (value) {
+          if (value != null) {
+            settings.updateSetting(ReadingSettings._scrollDirectionKey, value);
+          }
+        },
       ),
     );
   }
 
   Widget _buildAboutTile(BuildContext context) {
     return ListTile(
-      title: const Text('App Version'), subtitle: const Text('1.2.1 (Image Cover)'), // Updated version example
+      title: const Text('App Version'),
+      subtitle: const Text('1.2.1 (Image Cover)'), // Updated version example
       leading: const Icon(Icons.info_outline),
       onTap: () {
-        showAboutDialog( context: context, applicationName: 'Flutter EPUB Reader', applicationVersion: '1.2.1', applicationLegalese: '© 2025 Your Name/Company',
-          children: [ const Padding( padding: EdgeInsets.only(top: 15), child: Text('A simple EPUB reader built with Flutter and Vocsy EPUB Viewer.'), ) ],
+        showAboutDialog(
+          context: context,
+          applicationName: 'Flutter EPUB Reader',
+          applicationVersion: '1.2.1',
+          applicationLegalese: '© 2025 Your Name/Company',
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 15),
+              child: Text(
+                  'A simple EPUB reader built with Flutter and Vocsy EPUB Viewer.'),
+            )
+          ],
         );
       },
     );
@@ -914,37 +1294,88 @@ class HighlightsScreen extends StatelessWidget {
   const HighlightsScreen({Key? key, required this.book}) : super(key: key);
 
   Map<String, List<String>> _getValidHighlights() {
-    if (book.highlights is Map<String, List<String>>) { return book.highlights; }
-    else { print("Warning: Highlights data is not Map<String, List<String>> for book ${book.id}. Returning empty."); return {}; }
+    if (book.highlights is Map<String, List<String>>) {
+      return book.highlights;
+    } else {
+      print(
+          "Warning: Highlights data is not Map<String, List<String>> for book ${book.id}. Returning empty.");
+      return {};
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final Map<String, List<String>> highlights = _getValidHighlights();
     final List<String> chapters = highlights.keys.toList();
-    print("HighlightsScreen: Displaying highlights for book ${book.id}. Chapters: ${chapters.length}");
+    print(
+        "HighlightsScreen: Displaying highlights for book ${book.id}. Chapters: ${chapters.length}");
     return Scaffold(
-      appBar: AppBar( title: Text('Highlights: ${book.title}', overflow: TextOverflow.ellipsis)),
+      appBar: AppBar(
+          title: Text('Highlights: ${book.title}',
+              overflow: TextOverflow.ellipsis)),
       body: highlights.isEmpty
-          ? Center( child: Padding( padding: const EdgeInsets.all(20.0), child: Text( 'No highlights saved for this book yet.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey), ), ), )
+          ? Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Text(
+            'No highlights saved for this book yet.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(color: Colors.grey),
+          ),
+        ),
+      )
           : ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0),
+        padding:
+        const EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0),
         itemCount: chapters.length,
         itemBuilder: (context, chapterIndex) {
           final String chapter = chapters[chapterIndex];
           final List<String> chapterHighlights = highlights[chapter] ?? [];
-          if (chapterHighlights.isEmpty) { return const SizedBox.shrink(); }
+          if (chapterHighlights.isEmpty) {
+            return const SizedBox.shrink();
+          }
           return Card(
             child: ExpansionTile(
-              title: Text(chapter.isNotEmpty ? chapter : 'Unknown Chapter', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-              initiallyExpanded: true, childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              title: Text(
+                  chapter.isNotEmpty ? chapter : 'Unknown Chapter',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600)),
+              initiallyExpanded: true,
+              childrenPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              tilePadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               children: chapterHighlights.map((text) {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   child: Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration( color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.5), borderRadius: BorderRadius.circular(8), border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.3))),
-                    child: SelectableText( text, style: Theme.of(context).textTheme.bodyMedium?.copyWith( fontStyle: FontStyle.italic, height: 1.4, ), ),
+                    decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .secondaryContainer
+                            .withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withOpacity(0.3))),
+                    child: SelectableText(
+                      text,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        height: 1.4,
+                      ),
+                    ),
                   ),
                 );
               }).toList(),
@@ -957,183 +1388,8 @@ class HighlightsScreen extends StatelessWidget {
 }
 
 
-// --- Reader Screen ---
-// (No changes needed in this class for the image feature, but includes necessary checks)
-class ReaderScreen extends StatefulWidget {
-  final Book book;
-  const ReaderScreen({Key? key, required this.book}) : super(key: key);
-  @override
-  _ReaderScreenState createState() => _ReaderScreenState();
-}
-
-class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver {
-  bool isLoading = true;
-  late ReadingTimeTracker _timeTracker;
-  late DatabaseHelper _databaseHelper;
-  bool _epubOpenedSuccessfully = false;
-  StreamSubscription? _locatorSubscription;
-
-  @override
-  void initState() {
-    super.initState();
-    print("ReaderScreen: initState for book ID ${widget.book.id} - ${widget.book.title}");
-    WidgetsBinding.instance.addObserver(this);
-    _databaseHelper = DatabaseHelper();
-
-    if (widget.book.id == null) {
-      print("ReaderScreen: FATAL ERROR - Book ID is null. Cannot initialize reader.");
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) { ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Error: Cannot open book due to missing data.'), backgroundColor: Colors.red), ); Navigator.pop(context); }
-      });
-      setState(() { isLoading = false; }); return;
-    }
-
-    final file = File(widget.book.filePath);
-    if (!file.existsSync()) {
-      print("ReaderScreen: FATAL ERROR - Book file not found at ${widget.book.filePath}.");
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) { ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Error: Book file is missing or moved.'), backgroundColor: Colors.red), ); Navigator.pop(context); }
-      });
-      setState(() { isLoading = false; }); return;
-    }
-
-    _timeTracker = ReadingTimeTracker( bookId: widget.book.id!, databaseHelper: _databaseHelper, );
-    _openEpub();
-  }
-
-  @override
-  void dispose() {
-    print("ReaderScreen: dispose for book ID ${widget.book.id}");
-    WidgetsBinding.instance.removeObserver(this);
-    _locatorSubscription?.cancel(); print("ReaderScreen: Locator stream listener cancelled.");
-    if (widget.book.id != null && _epubOpenedSuccessfully) {
-      print("ReaderScreen: Stopping and saving time tracking before dispose.");
-      _timeTracker.stopAndSaveTracking(); // Fire and forget in dispose
-    } else {
-      print("ReaderScreen: Skipping time save on dispose (book ID null or EPUB not opened).");
-    }
-    print("ReaderScreen: Disposed.");
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    print("ReaderScreen: AppLifecycleState changed to $state for book ID ${widget.book.id}");
-    if (widget.book.id == null || !_epubOpenedSuccessfully) { print("ReaderScreen: Ignoring lifecycle change (book ID null or EPUB not opened)."); return; }
-    switch (state) {
-      case AppLifecycleState.resumed: print("ReaderScreen: App resumed, starting time tracking."); _timeTracker.startTracking(); break;
-      case AppLifecycleState.inactive: case AppLifecycleState.paused: case AppLifecycleState.detached: case AppLifecycleState.hidden:
-      print("ReaderScreen: App inactive/paused/detached/hidden, stopping and saving time tracking.");
-      _timeTracker.stopAndSaveTracking(); break;
-    }
-  }
-
-  Future<void> _openEpub() async {
-    print("ReaderScreen: _openEpub called.");
-    if (widget.book.id == null) { /* Handled in initState */ if (mounted) setState(() {isLoading = false;}); return; }
-    final file = File(widget.book.filePath);
-    if (!await file.exists()) { /* Handled in initState */ if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Book file is missing.'), backgroundColor: Colors.red)); Navigator.pop(context); setState(() {isLoading = false;}); } return; }
-
-    final readingSettings = Provider.of<ReadingSettings>(context, listen: false);
-    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final EpubScrollDirection scrollDirection = readingSettings.scrollDirection;
-
-    print("ReaderScreen: Configuring VocsyEpub..."); print("  - Identifier: book_${widget.book.id}"); print("  - Scroll Direction: $scrollDirection"); print("  - Night Mode: $isDarkMode");
-
-    try {
-      VocsyEpub.setConfig( themeColor: Theme.of(context).colorScheme.primary, identifier: "book_${widget.book.id}", scrollDirection: scrollDirection, allowSharing: true, enableTts: false, nightMode: isDarkMode, );
-      print("ReaderScreen: Configuration set. Attempting to load last location...");
-      EpubLocator? lastKnownLocator;
-      if (widget.book.lastLocatorJson.isNotEmpty && widget.book.lastLocatorJson != '{}') {
-        print("ReaderScreen: Found saved locator JSON: ${widget.book.lastLocatorJson}");
-        try {
-          Map<String, dynamic> decodedLocatorMap = json.decode(widget.book.lastLocatorJson);
-          if (decodedLocatorMap.containsKey('bookId') && decodedLocatorMap.containsKey('href') && decodedLocatorMap.containsKey('created') && decodedLocatorMap.containsKey('locations') && decodedLocatorMap['locations'] is Map && decodedLocatorMap['locations'].containsKey('cfi')) {
-            lastKnownLocator = EpubLocator.fromJson(decodedLocatorMap); print("ReaderScreen: Successfully decoded last location.");
-          } else { print("ReaderScreen: Warning - Saved locator JSON has missing/invalid fields. Opening from start."); }
-        } catch (e) { print("ReaderScreen: Error decoding locator JSON '${widget.book.lastLocatorJson}': $e. Opening from start."); lastKnownLocator = null; }
-      } else { print("ReaderScreen: No valid saved location found. Opening from start."); }
-
-      print("ReaderScreen: Calling VocsyEpub.open with path: ${widget.book.filePath} and locator: ${lastKnownLocator != null}");
-      VocsyEpub.open( widget.book.filePath, lastLocation: lastKnownLocator, );
-
-      _epubOpenedSuccessfully = true;
-      print("ReaderScreen: VocsyEpub.open called. Setting up listeners and starting timer.");
-      _setupLocatorListener();
-      _timeTracker.startTracking();
-
-      if (mounted) { setState(() { isLoading = false; }); }
-      print("ReaderScreen: EPUB should now be visible.");
-
-    } catch (e) {
-      _epubOpenedSuccessfully = false;
-      print("ReaderScreen: CRITICAL Error during VocsyEpub configuration or open: $e");
-      if (mounted) {
-        setState(() { isLoading = false; });
-        ScaffoldMessenger.of(context).showSnackBar( SnackBar(content: Text('Error opening EPUB: ${e.toString()}'), backgroundColor: Colors.red), );
-        Navigator.pop(context); // Pop on critical error
-      }
-    }
-  }
-
-  void _setupLocatorListener() {
-    print("ReaderScreen: Setting up locator stream listener for book ID ${widget.book.id}");
-    _locatorSubscription?.cancel();
-    _locatorSubscription = VocsyEpub.locatorStream.listen(
-          (locatorData) {
-        Map<String, dynamic>? locatorMap;
-        if (locatorData is String) { try { locatorMap = json.decode(locatorData); } catch (e) { print("ReaderScreen: Error decoding locator string: $e. Data: $locatorData"); return; } }
-        else if (locatorData is Map) { try { locatorMap = Map<String, dynamic>.from(locatorData); } catch (e) { print("ReaderScreen: Error converting received map: $e. Data: $locatorData"); return; } }
-
-        if (locatorMap != null) {
-          if (locatorMap.containsKey('bookId') && locatorMap.containsKey('href') && locatorMap.containsKey('locations') && locatorMap['locations'] is Map && locatorMap['locations'].containsKey('cfi')) {
-            _updateBookProgress(locatorMap);
-          } else { print("ReaderScreen: Warning - Received locator map is missing required fields: $locatorMap"); }
-        } else { print("ReaderScreen: Received locator data in unrecognized format: ${locatorData?.runtimeType}"); }
-      },
-      onError: (error) { print("ReaderScreen: Error in locator stream: $error"); if (mounted && _epubOpenedSuccessfully) { _timeTracker.stopAndSaveTracking(); } },
-      onDone: () { print("ReaderScreen: Locator stream closed (onDone). Reader likely dismissed."); if (mounted && _epubOpenedSuccessfully) { print("ReaderScreen: Performing safety stop/save of time tracker on locator stream 'onDone'."); _timeTracker.stopAndSaveTracking(); } },
-      cancelOnError: false,
-    );
-    print("ReaderScreen: Locator stream listener is now active.");
-  }
-
-  Future<void> _updateBookProgress(Map<String, dynamic> locatorData) async {
-    if (widget.book.id == null || !mounted) { return; }
-    try {
-      final String newLocatorJson = json.encode(locatorData);
-      final db = await _databaseHelper.database;
-      final currentBookData = await db.query('books', where: 'id = ?', whereArgs: [widget.book.id], limit: 1);
-      if (currentBookData.isNotEmpty) {
-        final String? currentLocatorJson = currentBookData.first['lastLocatorJson'] as String?;
-        if (newLocatorJson != currentLocatorJson) {
-          int count = await db.update( 'books', {'lastLocatorJson': newLocatorJson}, where: 'id = ?', whereArgs: [widget.book.id], );
-        }
-      } else { print("ReaderScreen: Warning - Book ID ${widget.book.id} not found in DB during progress update check."); }
-    } catch (e) { print("ReaderScreen: Error encoding or saving book progress: $e"); }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    print("ReaderScreen: build (isLoading: $isLoading, _epubOpenedSuccessfully: $_epubOpenedSuccessfully)");
-
-    if (widget.book.id == null && !isLoading) { // Fallback UI if initState checks fail unexpectedly
-      return Scaffold( appBar: AppBar(title: const Text('Error')), body: Center( child: Padding( padding: const EdgeInsets.all(16.0), child: Text( 'Failed to load book: Invalid data or file missing.', textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)), )), );
-    }
-
-    return Scaffold(
-      // Body content is minimal as the native view takes over.
-      body: Center(
-        child: isLoading
-            ? const Column( mainAxisAlignment: MainAxisAlignment.center, children: [ CircularProgressIndicator(), SizedBox(height: 20), Text('Preparing Book...'), ], ) // Initial loading
-            : _epubOpenedSuccessfully
-            ? Container(color: Theme.of(context).scaffoldBackgroundColor) // Placeholder while native view is active
-            : Padding( // Error state if open failed
-          padding: const EdgeInsets.all(20.0),
-          child: Text( 'Failed to display the book.\nPlease try again later or check the file.', textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error), ),
-        ),
-      ),
-    );
-  }
-}
+// --- Reader Screen (Removed) ---
+// The ReaderScreen StatefulWidget and its State class (_ReaderScreenState)
+// have been removed as the navigation flow no longer uses them.
+// The logic for opening the EPUB and handling the locator stream
+// has been moved into the _LibraryScreenState.
