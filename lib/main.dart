@@ -546,7 +546,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
               style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
               child: const Text('Delete'),
               // IMPORTANT: Pop the dialog *before* starting async delete operation
-              onPressed: () async { Navigator.of(ctx).pop(); await _deleteBook(book); },
+              onPressed: () async { Navigator.of(ctx).pop(); await _deleteBook(book);
+              if (!mounted) return; // Important safety check
+
+              // 4. Pop the StatsScreen using the LibraryScreen's context 'context'
+              Navigator.of(context).pop();
+              },
             ),
           ],
         );
@@ -712,14 +717,6 @@ class StatsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Stats: ${book.title}', overflow: TextOverflow.ellipsis),
-        actions: [
-          IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              tooltip: 'Delete Book',
-              onPressed: onDeleteRequested // Call the callback passed from LibraryScreen
-          ),
-        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -754,6 +751,18 @@ class StatsScreen extends StatelessWidget {
                     const Divider(),
                     _buildStatRow(context, Icons.timer_outlined, 'Total Time Read', _formatDurationLocal(Duration(seconds: book.totalReadingTime))),
                     const Divider(),
+
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12.0), // Add some space above the button
+                      child: Center( // Center the button if you like
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.delete_forever_outlined, color: Colors.redAccent),
+                          label: const Text('Delete Book Permanently'),
+                          style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                          onPressed: onDeleteRequested, // Use the existing callback
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
