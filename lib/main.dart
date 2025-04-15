@@ -752,12 +752,6 @@ class StatsScreen extends StatelessWidget {
                     const Divider(),
                     _buildStatRow(context, Icons.timer_outlined, 'Total Time Read', _formatDurationLocal(Duration(seconds: book.totalReadingTime))),
                     const Divider(),
-                    _buildStatRow(context, Icons.bookmark_border, 'Progress', '${percentageComplete.toStringAsFixed(1)}% Complete'),
-                    if (timeLeft != null) const Divider(),
-                    if (timeLeft != null) _buildStatRow(context, Icons.hourglass_bottom_outlined, 'Est. Time Left', _formatDurationLocal(timeLeft)),
-                    const Divider(),
-                    _buildStatRow(context, Icons.highlight_outlined, 'Highlights Made', highlightCount.toString()), // Use getter count
-
                   ],
                 ),
               ),
