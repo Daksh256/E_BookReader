@@ -822,9 +822,6 @@ class SettingsScreen extends StatelessWidget {
             padding: const EdgeInsets.all(8.0),
             children: [
               _buildSectionHeader(context, 'Appearance'),
-              _buildFontSizeSetting(context, readingSettings),
-              _buildLineHeightSetting(context, readingSettings),
-              _buildFontFamilySetting(context, readingSettings),
               _buildScrollDirectionSetting(context, readingSettings),
               const Divider(height: 20, thickness: 1),
               _buildSectionHeader(context, 'About'),
@@ -840,39 +837,6 @@ class SettingsScreen extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
       child: Text( title, style: Theme.of(context).textTheme.titleMedium?.copyWith( color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600)),
-    );
-  }
-  Widget _buildFontSizeSetting(BuildContext context, ReadingSettings settings) {
-    return ListTile(
-      title: const Text('Font Size'), subtitle: Text('${settings.fontSize.toInt()} pt'),
-      trailing: SizedBox( width: MediaQuery.of(context).size.width * 0.5,
-        child: Slider( value: settings.fontSize, min: 12, max: 32, divisions: 20, label: '${settings.fontSize.toInt()}',
-          onChanged: (value) { settings.updateSetting(ReadingSettings._fontSizeKey, value); },
-        ),
-      ),
-    );
-  }
-  Widget _buildLineHeightSetting(BuildContext context, ReadingSettings settings) {
-    return ListTile(
-      title: const Text('Line Height'), subtitle: Text(settings.lineHeight.toStringAsFixed(1)),
-      trailing: SizedBox( width: MediaQuery.of(context).size.width * 0.5,
-        child: Slider( value: settings.lineHeight, min: 1.0, max: 2.0, divisions: 10, label: settings.lineHeight.toStringAsFixed(1),
-          onChanged: (value) { settings.updateSetting(ReadingSettings._lineHeightKey, value); },
-        ),
-      ),
-    );
-  }
-  Widget _buildFontFamilySetting(BuildContext context, ReadingSettings settings) {
-    const List<String> availableFonts = ['Roboto', 'Merriweather', 'OpenSans', 'Lato', 'Lora', 'SourceSerifPro'];
-    // Ensure the current value exists in the list, otherwise default to Roboto
-    String currentValue = availableFonts.contains(settings.fontFamily) ? settings.fontFamily : 'Roboto';
-    return ListTile(
-      title: const Text('Font Family'),
-      trailing: DropdownButton<String>(
-        value: currentValue,
-        items: availableFonts.map((String fontName) => DropdownMenuItem<String>(value: fontName, child: Text(fontName))).toList(),
-        onChanged: (value) { if (value != null) settings.updateSetting(ReadingSettings._fontFamilyKey, value); },
-      ),
     );
   }
 
