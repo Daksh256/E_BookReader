@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "109205632710",
+    "project_id": "epubreaderauth",
+    "storage_bucket": "epubreaderauth.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:109205632710:android:23a7588bcfb208116cc9c7",
+        "android_client_info": {
+          "package_name": "com.example.test_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2Tlr56zPZvQxyE7MFFsYdaJZGna8Z19w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
