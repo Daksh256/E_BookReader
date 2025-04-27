@@ -1,3 +1,4 @@
+// =========== [ Imports ] ===========
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:vocsy_epub_viewer/epub_viewer.dart';
@@ -11,12 +12,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:math';
 
+// Firebase Auth Imports
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+// import 'firebase_options.dart'; // REMOVED as requested
+
+
+// =========== [ Enums & Classes (Existing - Unchanged) ] ===========
+
 // Enum to represent library view types
 enum LibraryViewType { grid, list }
 
-// ====================================
 // Book Class
-// ====================================
 class Book {
   final int? id;
   final String title;
@@ -112,9 +119,7 @@ class Book {
   );
 }
 
-// ====================================
 // DatabaseHelper Class
-// ====================================
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   static Database? _database;
@@ -218,21 +223,19 @@ class DatabaseHelper {
   }
 }
 
-// ====================================
-// ReadingSettings Class (with View Type)
-// ====================================
+// ReadingSettings Class
 class ReadingSettings extends ChangeNotifier {
   static const _themeModeKey = 'themeMode';
   static const _scrollDirectionKey = 'scrollDirection';
-  static const _libraryViewTypeKey = 'libraryViewType'; // New key
+  static const _libraryViewTypeKey = 'libraryViewType';
 
   ThemeMode _themeMode = ThemeMode.system;
   EpubScrollDirection _scrollDirection = EpubScrollDirection.HORIZONTAL;
-  LibraryViewType _libraryViewType = LibraryViewType.grid; // New field, default grid
+  LibraryViewType _libraryViewType = LibraryViewType.grid;
 
   ThemeMode get themeMode => _themeMode;
   EpubScrollDirection get scrollDirection => _scrollDirection;
-  LibraryViewType get libraryViewType => _libraryViewType; // New getter
+  LibraryViewType get libraryViewType => _libraryViewType;
 
   ReadingSettings() {
     loadSettings();
@@ -241,41 +244,31 @@ class ReadingSettings extends ChangeNotifier {
   Future<void> loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      // Load ThemeMode
       final savedThemeModeString = prefs.getString(_themeModeKey);
       _themeMode = ThemeMode.values.firstWhere(
               (e) => e.toString() == savedThemeModeString,
           orElse: () => ThemeMode.system
       );
-
-      // Load Scroll Direction
       final savedDirectionName = prefs.getString(_scrollDirectionKey);
       _scrollDirection = EpubScrollDirection.values.firstWhere(
             (e) => e.name == savedDirectionName,
         orElse: () => EpubScrollDirection.HORIZONTAL,
       );
-
-      // Load Library View Type
       final savedViewTypeName = prefs.getString(_libraryViewTypeKey);
       _libraryViewType = LibraryViewType.values.firstWhere(
               (e) => e.name == savedViewTypeName,
-          orElse: () => LibraryViewType.grid // Default to grid if not found
+          orElse: () => LibraryViewType.grid
       );
-
       print("Settings loaded: Theme=$_themeMode, Scroll=$_scrollDirection, View=$_libraryViewType");
-      notifyListeners(); // Notify once after all settings are loaded
-
+      notifyListeners();
     } catch (e) {
       print("Error loading settings: $e");
-      // Set defaults on error
       _themeMode = ThemeMode.system;
       _scrollDirection = EpubScrollDirection.HORIZONTAL;
       _libraryViewType = LibraryViewType.grid;
-      notifyListeners(); // Notify with defaults if error occurred
+      notifyListeners();
     }
   }
-
 
   void updateSetting(String key, dynamic value) {
     bool changed = false;
@@ -294,7 +287,6 @@ class ReadingSettings extends ChangeNotifier {
           print("Scroll Direction updated to: $_scrollDirection");
         }
         break;
-    // Add case for Library View Type
       case _libraryViewTypeKey:
         if (_libraryViewType != value && value is LibraryViewType) {
           _libraryViewType = value;
@@ -315,7 +307,6 @@ class ReadingSettings extends ChangeNotifier {
       await Future.wait([
         prefs.setString(_themeModeKey, _themeMode.toString()),
         prefs.setString(_scrollDirectionKey, _scrollDirection.name),
-        // Save Library View Type using its name
         prefs.setString(_libraryViewTypeKey, _libraryViewType.name),
       ]);
       print("Settings saved successfully.");
@@ -325,9 +316,7 @@ class ReadingSettings extends ChangeNotifier {
   }
 }
 
-// ====================================
 // ReadingTimeTracker Class
-// ====================================
 class ReadingTimeTracker {
   final int bookId;
   final DatabaseHelper databaseHelper;
@@ -372,7 +361,6 @@ class ReadingTimeTracker {
     }
   }
 
-
   void _resetTrackingState() { _sessionSeconds = 0; _startTime = null; }
 
   static String formatDuration(Duration? duration) {
@@ -389,60 +377,559 @@ class ReadingTimeTracker {
   }
 }
 
-// ====================================
-// Main Function
-// ====================================
+
+// =========== [ AuthService - Authentication Logic ] ===========
+// =========== [ AuthService - MODIFIED ] ===========
+// Service to handle all Firebase Authentication interactions
+class AuthService {
+  final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
+
+  Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
+  User? get currentUser => _firebaseAuth.currentUser;
+
+  Future<User?> signInWithEmailPassword(String email, String password) async {
+    try {
+      UserCredential result = await _firebaseAuth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      return result.user;
+    } on FirebaseAuthException catch (e) {
+      print('Sign In Error: ${e.code} - ${e.message}');
+      throw Exception('Sign In Error: ${e.message}');
+    } catch (e) {
+      print('Unexpected Sign In Error: $e');
+      throw Exception('An unexpected error occurred during sign in.');
+    }
+  }
+
+  Future<User?> signUpWithEmailPassword(String email, String password) async {
+    try {
+      UserCredential result = await _firebaseAuth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      return result.user;
+    } on FirebaseAuthException catch (e) {
+      print('Sign Up Error: ${e.code} - ${e.message}');
+      throw Exception('Sign Up Error: ${e.message}');
+    } catch (e) {
+      print('Unexpected Sign Up Error: $e');
+      throw Exception('An unexpected error occurred during sign up.');
+    }
+  }
+
+  Future<void> signOut() async {
+    try {
+      await _firebaseAuth.signOut();
+      print('User signed out successfully');
+    } catch (e) {
+      print('Sign Out Error: $e');
+    }
+  }
+
+  // --- ADDED METHOD for Password Reset ---
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _firebaseAuth.sendPasswordResetEmail(email: email.trim());
+      print('Password reset email sent successfully to $email');
+    } on FirebaseAuthException catch (e) {
+      print('Password Reset Error: ${e.code} - ${e.message}');
+      // Throw a more specific error message based on the code
+      if (e.code == 'user-not-found') {
+        throw Exception('No user found for that email.');
+      } else if (e.code == 'invalid-email') {
+        throw Exception('The email address is not valid.');
+      } else {
+        throw Exception('Password Reset Error: ${e.message}');
+      }
+    } catch (e) {
+      print('Unexpected Password Reset Error: $e');
+      throw Exception('An unexpected error occurred while sending the password reset email.');
+    }
+  }
+// --- END ADDED METHOD ---
+}
+// ===================================================
+
+
+// =========== [ Main Function - MODIFIED for Manual Init & Debugging ] ===========
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final readingSettings = ReadingSettings();
-  await readingSettings.loadSettings(); // Ensure settings are loaded before building UI
 
+  // --- Firebase Initialization with Debugging ---
+  try {
+    print("Attempting Firebase initialization..."); // Debug log
+    // ** IMPORTANT: Replace placeholders with your actual Firebase project credentials! **
+    // Find these in your Firebase project settings (Project settings > General > Your apps > Flutter app)
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: "YOUR_API_KEY", // Replace with your key
+        appId: "YOUR_APP_ID", // Replace with your ID
+        messagingSenderId: "YOUR_MESSAGING_SENDER_ID", // Replace with your Sender ID
+        projectId: "YOUR_PROJECT_ID", // Replace with your Project ID
+        // storageBucket: "YOUR_PROJECT_ID.appspot.com", // Optional: Add if you use Firebase Storage
+      ),
+    );
+    print("Firebase initialized successfully."); // Debug log
+  } catch (e) {
+    // ---- !!! Crucial Debugging Output !!! ----
+    print("!!!!!!!!!!!! Firebase initialization FAILED !!!!!!!!!!!!");
+    print(e.toString());
+    // Consider showing an error screen here if Firebase is essential
+    // runApp(ErrorScreen(error: e.toString())); // Example error screen
+    // return; // Stop the app if needed
+    // ---- !!! ----------------------------- !!! ----
+  }
+  // --- End Firebase Initialization ---
+
+
+  // Load settings (existing)
+  final readingSettings = ReadingSettings();
+  await readingSettings.loadSettings();
+
+  // Run App with Providers (existing)
   runApp(
-    ChangeNotifierProvider.value(
-      value: readingSettings,
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: readingSettings),
+        Provider<AuthService>(create: (_) => AuthService()),
+      ],
       child: const EpubReaderApp(),
     ),
   );
 }
 
-// ====================================
-// EpubReaderApp Widget
-// ====================================
+
+// =========== [ EpubReaderApp Widget - Root ] ===========
 class EpubReaderApp extends StatelessWidget {
   const EpubReaderApp({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     final readingSettings = context.watch<ReadingSettings>();
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Flutter EPUB Reader',
-      theme: ThemeData( // Light theme
+      theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.light),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.indigo, width: 2.0),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+            textStyle: const TextStyle(fontSize: 16),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(
+              textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            )
+        ),
         cardTheme: CardTheme(
             elevation: 1.0,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5)
         ),
       ),
-      darkTheme: ThemeData( // Dark theme
+      darkTheme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.dark),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.indigoAccent, width: 2.0),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+            textStyle: const TextStyle(fontSize: 16),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(
+              textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            )
+        ),
         cardTheme: CardTheme(
             elevation: 1.0,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5)
         ),
       ),
-      themeMode: readingSettings.themeMode, // Use themeMode from provider
-      home: const LibraryScreen(),
+      themeMode: readingSettings.themeMode,
+      home: const AuthGate(), // Start with AuthGate
+      // Use this for testing if stuck on splash:
+      // home: const Scaffold(body: Center(child: Text("App Started Successfully!"))),
     );
   }
 }
 
-// ====================================
-// LibraryScreen Widget (with View Toggle)
-// ====================================
+
+// =========== [ AuthGate Widget - Decides Login vs. Main App ] ===========
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+
+    return StreamBuilder<User?>(
+      stream: authService.authStateChanges,
+      builder: (context, snapshot) {
+        // --- Debug Logs for AuthGate ---
+        print("AuthGate StreamBuilder state: ${snapshot.connectionState}");
+        if (snapshot.hasError) {
+          print("!!!!!!!!!!!! AuthGate Stream Error !!!!!!!!!!!!");
+          print(snapshot.error.toString());
+          // Consider showing an error message UI here
+          return Scaffold(body: Center(child: Text('Auth Error: ${snapshot.error}')));
+        }
+        // --- End Debug Logs ---
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          print("AuthGate: Waiting for auth state..."); // Debug log
+          // Show loading indicator OR your native splash might still be visible
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
+        if (snapshot.hasData) {
+          // User is logged in
+          print("AuthGate: User is logged in (${snapshot.data?.uid}). Showing LibraryScreen."); // Debug log
+          return const LibraryScreen(); // Show your main library screen
+        } else {
+          // User is logged out
+          print("AuthGate: User is logged out. Showing LoginSignupFlow."); // Debug log
+          return const LoginSignupFlow(); // Show the login/signup switcher
+        }
+      },
+    );
+  }
+}
+
+
+// =========== [ LoginSignupFlow Widget - Switches Login/Signup ] ===========
+class LoginSignupFlow extends StatefulWidget {
+  const LoginSignupFlow({super.key});
+  @override
+  State<LoginSignupFlow> createState() => _LoginSignupFlowState();
+}
+
+class _LoginSignupFlowState extends State<LoginSignupFlow> {
+  bool _showLoginScreen = true;
+  void toggleScreens() {
+    setState(() => _showLoginScreen = !_showLoginScreen);
+  }
+  @override
+  Widget build(BuildContext context) {
+    if (_showLoginScreen) {
+      return LoginScreen(onTapSwitch: toggleScreens);
+    } else {
+      return SignupScreen(onTapSwitch: toggleScreens);
+    }
+  }
+}
+
+
+// =========== [ LoginScreen Widget - UI ] ===========
+// =========== [ LoginScreen Widget - MODIFIED ] ===========
+// UI for the Login page
+class LoginScreen extends StatefulWidget {
+  final VoidCallback onTapSwitch;
+  const LoginScreen({super.key, required this.onTapSwitch});
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  // Login logic (unchanged)
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) { return; }
+    if (_isLoading) return;
+    setState(() { _isLoading = true; _errorMessage = null; });
+    final authService = Provider.of<AuthService>(context, listen: false);
+    try {
+      await authService.signInWithEmailPassword(_emailController.text, _passwordController.text,);
+    } catch (e) {
+      if (mounted) {
+        setState(() { _errorMessage = e.toString().replaceFirst('Exception: ', ''); _isLoading = false; });
+        ScaffoldMessenger.of(context).showSnackBar( SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error) );
+      }
+    } finally {
+      if (mounted && _isLoading) { setState(() => _isLoading = false); }
+    }
+  }
+
+  // --- ADDED: Forgot Password Logic ---
+  Future<void> _forgotPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: const Text('Please enter a valid email address first.'), backgroundColor: Colors.orangeAccent[700])
+      );
+      return;
+    }
+
+    // Show a loading indicator temporarily or disable button
+    setState(() { _isLoading = true; _errorMessage = null; });
+    final authService = Provider.of<AuthService>(context, listen: false);
+
+    try {
+      await authService.sendPasswordResetEmail(email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Password reset email sent to $email. Please check your inbox (and spam folder).'), backgroundColor: Colors.green)
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() { _errorMessage = e.toString().replaceFirst('Exception: ', ''); });
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error)
+        );
+      }
+    } finally {
+      if (mounted) { setState(() => _isLoading = false); } // Ensure loading stops
+    }
+  }
+  // --- END ADDED: Forgot Password Logic ---
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(30.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text( "Welcome Back", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.center ),
+                  Text( "Login to your E-Book Reader", style: Theme.of(context).textTheme.titleSmall, textAlign: TextAlign.center ),
+                  const SizedBox(height: 40),
+                  TextFormField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) { if (value == null || value.isEmpty || !value.contains('@')) { return 'Please enter a valid email'; } return null; },
+                  ),
+                  const SizedBox(height: 15),
+                  TextFormField(
+                    controller: _passwordController,
+                    decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)),
+                    obscureText: true,
+                    validator: (value) { if (value == null || value.isEmpty || value.length < 6) { return 'Password must be at least 6 characters'; } return null; },
+                  ),
+                  const SizedBox(height: 5), // Reduced spacing
+
+                  // --- ADDED: Forgot Password Button ---
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                        onPressed: _isLoading ? null : _forgotPassword, // Call the new method
+                        child: const Text('Forgot Password?'),
+                        style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero, // Reduce default padding
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap, // Reduce tap area
+                            alignment: Alignment.centerRight // Align text right
+                        )
+                    ),
+                  ),
+                  // --- END ADDED ---
+
+                  const SizedBox(height: 5), // Adjusted spacing
+                  if (_errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text( _errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error), textAlign: TextAlign.center, ),
+                    ),
+                  const SizedBox(height: 10),
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ElevatedButton.icon( icon: const Icon(Icons.login), label: const Text('Login'), onPressed: _login, ),
+                  const SizedBox(height: 20),
+                  TextButton( onPressed: _isLoading ? null : widget.onTapSwitch, child: const Text("Don't have an account? Sign Up"), ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+// ===================================================
+
+
+// =========== [ SignupScreen Widget - UI ] ===========
+class SignupScreen extends StatefulWidget {
+  final VoidCallback onTapSwitch;
+  const SignupScreen({super.key, required this.onTapSwitch});
+  @override
+  State<SignupScreen> createState() => _SignupScreenState();
+}
+
+class _SignupScreenState extends State<SignupScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  Future<void> _signup() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_isLoading) return;
+    setState(() { _isLoading = true; _errorMessage = null; });
+    final authService = Provider.of<AuthService>(context, listen: false);
+    try {
+      await authService.signUpWithEmailPassword(_emailController.text, _passwordController.text);
+      // AuthGate handles navigation
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error)
+        );
+      }
+    } finally {
+      if (mounted && _isLoading) { setState(() => _isLoading = false); }
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Create Account"),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+      ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(30.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                      "Create your Account",
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center
+                  ),
+                  Text(
+                      "Join the E-Book Reader community",
+                      style: Theme.of(context).textTheme.titleSmall,
+                      textAlign: TextAlign.center
+                  ),
+                  const SizedBox(height: 40),
+                  TextFormField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) {
+                      if (value == null || value.isEmpty || !value.contains('@')) {
+                        return 'Please enter a valid email';
+                      } return null;
+                    },
+                  ),
+                  const SizedBox(height: 15),
+                  TextFormField(
+                    controller: _passwordController,
+                    decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)),
+                    obscureText: true,
+                    validator: (value) {
+                      if (value == null || value.isEmpty || value.length < 6) {
+                        return 'Password must be at least 6 characters';
+                      } return null;
+                    },
+                  ),
+                  const SizedBox(height: 15),
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    decoration: const InputDecoration(labelText: 'Confirm Password', prefixIcon: Icon(Icons.lock_reset_outlined)),
+                    obscureText: true,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please confirm your password';
+                      }
+                      if (value != _passwordController.text) {
+                        return 'Passwords do not match';
+                      } return null;
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  if (_errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        _errorMessage!,
+                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ElevatedButton.icon(
+                    icon: const Icon(Icons.person_add_alt_1),
+                    label: const Text('Sign Up'),
+                    onPressed: _signup,
+                  ),
+                  const SizedBox(height: 20),
+                  TextButton(
+                    onPressed: _isLoading ? null : widget.onTapSwitch,
+                    child: const Text('Already have an account? Login'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+// =========== [ LibraryScreen Widget - Main App Screen ] ===========
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({Key? key}) : super(key: key);
   @override
@@ -458,6 +945,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   void initState() { super.initState(); _loadBooks(); }
+
   @override
   void dispose() {
     _locatorSubscription?.cancel();
@@ -500,14 +988,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Book already in library.')));
           setState(() => isLoading = false); return;
         }
-
         String? coverImagePath;
         String bookNameWithoutExt = path.basenameWithoutExtension(originalFileName);
-        // TODO: Improve cover image handling
         if (bookNameWithoutExt.toLowerCase().contains('discourses')) { coverImagePath = 'assets/images/discourses_selected_cover.png'; }
         else if (bookNameWithoutExt.toLowerCase().contains('designing your life')) { coverImagePath = 'assets/images/designing your life.png'; }
         else if (bookNameWithoutExt.toLowerCase().contains('republic')) { coverImagePath = 'assets/images/the republic.png'; }
-
         await sourceFile.copy(newPath);
         Book newBook = Book(
           title: originalFileName.replaceAll(RegExp(r'\.epub$', caseSensitive: false), ''),
@@ -536,37 +1021,29 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: Book file not found for "${book.title}". Please re-import.')));
       return;
     }
-
     await _timeTracker?.stopAndSaveTracking(); _timeTracker = null;
-
     _timeTracker = ReadingTimeTracker(
         bookId: book.id!, databaseHelper: _databaseHelper,
         onTimeSaved: () { if (mounted) _updateLocalBookData(book.id!); }
     );
-
     try {
       final readingSettings = Provider.of<ReadingSettings>(context, listen: false);
       final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
       print("Opening EPUB: ${book.filePath}");
       print("Reader Settings - Scroll: ${readingSettings.scrollDirection}, NightMode: $isDarkMode");
-
       VocsyEpub.setConfig(
           themeColor: Theme.of(context).colorScheme.primary, identifier: "book_${book.id}",
           scrollDirection: readingSettings.scrollDirection,
           allowSharing: true, enableTts: false, nightMode: isDarkMode
       );
-
       EpubLocator? lastKnownLocator;
       if (book.lastLocatorJson.isNotEmpty && book.lastLocatorJson != '{}') {
         try { lastKnownLocator = EpubLocator.fromJson(json.decode(book.lastLocatorJson)); }
         catch (e) { print("Error decoding locator for ${book.title}: $e."); }
       }
-
       _setupLocatorListener(book.id!);
       VocsyEpub.open( book.filePath, lastLocation: lastKnownLocator );
       _timeTracker!.startTracking();
-
     } catch (e, stackTrace) {
       print("CRITICAL Error during VocsyEpub open: $e\n$stackTrace");
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error opening EPUB: ${e.toString()}'), backgroundColor: Colors.red));
@@ -606,25 +1083,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
           (locatorData) async {
         print("Locator Received for $bookId: $locatorData");
         String? locatorJsonString;
-        if (locatorData is String) {
-          locatorJsonString = locatorData;
-        } else if (locatorData is Map) {
-          try {
-            locatorJsonString = json.encode(locatorData);
-          } catch (e) {
-            print("Listener Error encoding map for $bookId: $e");
-          }
+        if (locatorData is String) { locatorJsonString = locatorData; }
+        else if (locatorData is Map) {
+          try { locatorJsonString = json.encode(locatorData); }
+          catch (e) { print("Listener Error encoding map for $bookId: $e"); }
         }
-
         if (locatorJsonString != null) {
-          if (locatorJsonString != '{}') {
-            await _updateBookProgress(bookId, locatorJsonString);
-          } else {
-            print("Listener Info: Received empty locator '{}' for $bookId, skipping update.");
-          }
-        } else {
-          print("Listener Error: Unrecognized locator format for $bookId: $locatorData");
-        }
+          if (locatorJsonString != '{}') { await _updateBookProgress(bookId, locatorJsonString); }
+          else { print("Listener Info: Received empty locator '{}' for $bookId, skipping update."); }
+        } else { print("Listener Error: Unrecognized locator format for $bookId: $locatorData"); }
       },
       onError: (error) {
         print("DEBUG: Listener Error for $bookId: $error. Attempting to stop/save timer.");
@@ -639,19 +1106,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-
   Future<void> _updateBookProgress(int bookId, String newLocatorJson) async {
     if (!mounted) return;
     try {
       final bookIndex = books.indexWhere((b) => b.id == bookId);
-      if (bookIndex != -1 && books[bookIndex].lastLocatorJson == newLocatorJson) {
-        return;
-      }
+      if (bookIndex != -1 && books[bookIndex].lastLocatorJson == newLocatorJson) return;
       await _databaseHelper.updateBookProgressFields(bookId, newLocatorJson: newLocatorJson);
       _updateLocalBookData(bookId);
     } catch (e, stackTrace) { print("Error saving progress for $bookId: $e\n$stackTrace"); }
   }
-
 
   void _navigateToStatsScreen(Book book) async {
     if (!mounted) return;
@@ -661,15 +1124,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       try {
         final db = await _databaseHelper.database;
         final maps = await db.query('books', where: 'id = ?', whereArgs: [book.id], limit: 1);
-        if (maps.isNotEmpty) {
-          freshBook = Book.fromMap(maps.first);
-          print("Fetched fresh data for book ID ${book.id} before StatsScreen.");
-        }
+        if (maps.isNotEmpty) { freshBook = Book.fromMap(maps.first); print("Fetched fresh data for book ID ${book.id} before StatsScreen."); }
       } catch (e) { print("Error fetching fresh book data for StatsScreen: $e"); }
     }
-
     if (!mounted) return;
-
     final result = await Navigator.push(
       context, MaterialPageRoute(
         builder: (context) => StatsScreen(
@@ -678,7 +1136,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         )
     ),
     );
-
     if (mounted && freshBook.id != null && result != 'deleted') {
       _updateLocalBookData(freshBook.id!);
     }
@@ -690,26 +1147,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _timeTracker?.stopAndSaveTracking(); _timeTracker = null;
       print("Stopped tracker for book ID ${book.id} due to delete confirmation.");
     }
-
     showDialog( context: context, barrierDismissible: false,
       builder: (BuildContext ctx) {
         return AlertDialog(
           title: const Text('Delete Book?'),
           content: Text('Are you sure you want to permanently delete "${book.title}"? This cannot be undone.'),
           actions: <Widget>[
-            TextButton(
-                child: const Text('Cancel'),
-                onPressed: () => Navigator.of(ctx).pop()
-            ),
+            TextButton( child: const Text('Cancel'), onPressed: () => Navigator.of(ctx).pop()),
             TextButton(
               style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
               child: const Text('Delete'),
               onPressed: () async {
-                Navigator.of(ctx).pop();
+                Navigator.of(ctx).pop(); // Close dialog first
                 if (!mounted) return;
                 await _deleteBook(book);
-
                 if (mounted && Navigator.canPop(context)) {
+                  // Pop the StatsScreen if delete came from there
                   Navigator.of(context).pop('deleted');
                 }
               },
@@ -720,83 +1173,52 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-
   Future<void> _deleteBook(Book book, {bool showSnackbar = true}) async {
     print("Deleting book ID ${book.id}: ${book.title}");
-    if (book.id == null) {
-      print("Error: Cannot delete book with null ID.");
-      return;
-    }
+    if (book.id == null) { print("Error: Cannot delete book with null ID."); return; }
     if (mounted && !isLoading) setState(() => isLoading = true);
-
     try {
-      if (_timeTracker?.bookId == book.id) {
-        await _timeTracker?.stopAndSaveTracking(); _timeTracker = null;
-        print("Stopped tracker for book ID ${book.id} during deletion.");
-      }
-      if (_locatorSubscription != null && _timeTracker?.bookId == book.id ) {
-        _locatorSubscription?.cancel(); _locatorSubscription = null;
-        print("Cancelled locator listener for book ID ${book.id} during deletion.");
-      }
-
+      if (_timeTracker?.bookId == book.id) { await _timeTracker?.stopAndSaveTracking(); _timeTracker = null; print("Stopped tracker for book ID ${book.id} during deletion."); }
+      if (_locatorSubscription != null && _timeTracker?.bookId == book.id ) { _locatorSubscription?.cancel(); _locatorSubscription = null; print("Cancelled locator listener for book ID ${book.id} during deletion."); }
       final file = File(book.filePath);
-      if (await file.exists()) {
-        await file.delete();
-        print("Deleted file: ${book.filePath}");
-      } else {
-        print("File not found for deletion: ${book.filePath}");
-      }
-
+      if (await file.exists()) { await file.delete(); print("Deleted file: ${book.filePath}"); }
+      else { print("File not found for deletion: ${book.filePath}"); }
       await _databaseHelper.deleteBook(book.id!);
-      await _loadBooks();
-
-      if (mounted && showSnackbar) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('"${book.title}" deleted.')));
-      }
+      await _loadBooks(); // Refreshes list and sets isLoading=false
+      if (mounted && showSnackbar) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('"${book.title}" deleted.'))); }
     } catch (e, stackTrace) {
       print("Error deleting book ID ${book.id}: $e\n$stackTrace");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting "${book.title}".')));
         if (isLoading) setState(() { isLoading = false; });
       }
-    } finally {
-      if (mounted && isLoading) {
-        // loadBooks handles setting isLoading to false
-      }
     }
   }
 
-  // Method to toggle view type in ReadingSettings
   void _toggleViewType() {
     final settings = Provider.of<ReadingSettings>(context, listen: false);
     final currentType = settings.libraryViewType;
-    final nextType = currentType == LibraryViewType.grid
-        ? LibraryViewType.list
-        : LibraryViewType.grid;
+    final nextType = currentType == LibraryViewType.grid ? LibraryViewType.list : LibraryViewType.grid;
     settings.updateSetting(ReadingSettings._libraryViewTypeKey, nextType);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Watch ReadingSettings to rebuild when view type changes
     final readingSettings = context.watch<ReadingSettings>();
     final currentViewType = readingSettings.libraryViewType;
+    // final authService = Provider.of<AuthService>(context, listen: false); // Access if needed
+    // final userEmail = authService.currentUser?.email; // Optional: Get user email
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('My EPUB Library'),
+        // subtitle: userEmail != null ? Text(userEmail) : null, // Optional
         actions: [
-          // View Toggle Button
           IconButton(
-            icon: Icon(currentViewType == LibraryViewType.grid
-                ? Icons.view_list_outlined // Show list icon if grid is active
-                : Icons.grid_view_outlined), // Show grid icon if list is active
-            tooltip: currentViewType == LibraryViewType.grid
-                ? 'Switch to List View'
-                : 'Switch to Grid View',
-            onPressed: _toggleViewType, // Call the toggle method
+            icon: Icon(currentViewType == LibraryViewType.grid ? Icons.view_list_outlined : Icons.grid_view_outlined),
+            tooltip: currentViewType == LibraryViewType.grid ? 'Switch to List View' : 'Switch to Grid View',
+            onPressed: _toggleViewType,
           ),
-          // Settings Button
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
@@ -810,12 +1232,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : books.isEmpty
           ? _buildEmptyLibraryView()
-      // Conditionally build Grid or List view
           : RefreshIndicator(
         onRefresh: _loadBooks,
-        child: currentViewType == LibraryViewType.grid
-            ? _buildBookGridView()
-            : _buildBookListView(),
+        child: currentViewType == LibraryViewType.grid ? _buildBookGridView() : _buildBookListView(),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _pickAndImportBook,
@@ -846,19 +1265,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget _buildBookGridView() {
     final screenWidth = MediaQuery.of(context).size.width;
     final crossAxisCount = max(2,(screenWidth / 160).floor());
-    final double gridPadding = 12.0;
-    final double crossAxisSpacing = 12.0;
-    final double mainAxisSpacing = 16.0;
+    const double gridPadding = 12.0;
+    const double crossAxisSpacing = 12.0;
+    const double mainAxisSpacing = 16.0;
     final double itemWidth = (screenWidth - (gridPadding * 2) - (crossAxisSpacing * (crossAxisCount - 1))) / crossAxisCount;
     final double coverHeight = itemWidth * 1.5;
-    final double textHeight = 60;
-    final double progressBarHeight = 8;
+    const double textHeight = 60;
+    const double progressBarHeight = 8;
     final double itemHeight = coverHeight + textHeight + progressBarHeight;
     final double childAspectRatio = itemWidth / itemHeight;
 
     return GridView.builder(
       key: const PageStorageKey('libraryGrid'),
-      padding: EdgeInsets.all(gridPadding),
+      padding: const EdgeInsets.all(gridPadding),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         childAspectRatio: childAspectRatio,
@@ -870,7 +1289,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         try {
           final book = books[index];
           final double progress = book.progression;
-
           return Material(
             color: Colors.transparent,
             child: InkWell(
@@ -881,13 +1299,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 decoration: BoxDecoration(
                   color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(8.0),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  boxShadow: [ BoxShadow( color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2),),],
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.start,
@@ -896,46 +1308,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(8.0)),
                       child: Container(
-                        height: coverHeight,
-                        width: double.infinity,
-                        color: Theme.of(context).colorScheme.surfaceVariant,
+                        height: coverHeight, width: double.infinity, color: Theme.of(context).colorScheme.surfaceVariant,
                         child: (book.coverImagePath != null && book.coverImagePath!.isNotEmpty)
-                            ? Image.asset(
-                            book.coverImagePath!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (ctx, err, st) => const Center(child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 40))
-                        )
+                            ? Image.asset( book.coverImagePath!, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => const Center(child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 40)))
                             : Center(child: Icon(Icons.menu_book, size: 50.0, color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.6))),
                       ),
                     ),
                     const SizedBox(height: 6.0),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text(
-                        book.title,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500, height: 1.3),
-                      ),
+                      child: Text( book.title, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500, height: 1.3),),
                     ),
                     const Spacer(),
                     if (progress > 0.0)
                       Padding(
                         padding: const EdgeInsets.only(left: 8.0, right: 8.0, bottom: 8.0, top: 4.0),
-                        child: SizedBox(
-                          height: progressBarHeight,
-                          child: LinearProgressIndicator(
-                            value: progress,
-                            backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                            valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
-                            borderRadius: BorderRadius.circular(progressBarHeight / 2),
-                          ),
-                        ),
+                        child: SizedBox( height: progressBarHeight, child: LinearProgressIndicator( value: progress, backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5), valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary), borderRadius: BorderRadius.circular(progressBarHeight / 2), ),),
                       )
-                    else
-                      SizedBox(height: progressBarHeight + 12.0),
-
+                    else const SizedBox(height: progressBarHeight + 12.0), // Keep spacing consistent
                   ],
                 ),
               ),
@@ -949,24 +1339,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-
   Widget _buildBookListView() {
-    final double listPadding = 8.0;
-    final double coverSize = 60.0;
+    const double listPadding = 8.0;
+    const double coverSize = 60.0;
 
     return ListView.builder(
       key: const PageStorageKey('libraryList'),
-      padding: EdgeInsets.all(listPadding),
+      padding: const EdgeInsets.all(listPadding),
       itemCount: books.length,
       itemBuilder: (context, index) {
         try {
           final book = books[index];
           final double progress = book.progression;
-
           return Card(
-            margin: const EdgeInsets.symmetric(vertical: 5.0),
-            elevation: 1.5,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            margin: const EdgeInsets.symmetric(vertical: 5.0), elevation: 1.5, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             child: InkWell(
               onTap: () => _openReader(book),
               onLongPress: () => _navigateToStatsScreen(book),
@@ -978,15 +1364,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(6.0),
                       child: Container(
-                        width: coverSize,
-                        height: coverSize * 1.4,
-                        color: Theme.of(context).colorScheme.surfaceVariant,
+                        width: coverSize, height: coverSize * 1.4, color: Theme.of(context).colorScheme.surfaceVariant,
                         child: (book.coverImagePath != null && book.coverImagePath!.isNotEmpty)
-                            ? Image.asset(
-                            book.coverImagePath!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (ctx, err, st) => const Center(child: Icon(Icons.broken_image_outlined, size: 24, color: Colors.grey))
-                        )
+                            ? Image.asset( book.coverImagePath!, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => const Center(child: Icon(Icons.broken_image_outlined, size: 24, color: Colors.grey)))
                             : Center(child: Icon(Icons.menu_book, size: 30.0, color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.6))),
                       ),
                     ),
@@ -995,22 +1375,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            book.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
-                          ),
+                          Text( book.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500), ),
                           const SizedBox(height: 8),
                           if (progress > 0.0) ...[
                             const SizedBox(height: 8),
-                            LinearProgressIndicator(
-                              value: progress,
-                              backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                              valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
-                              minHeight: 5,
-                              borderRadius: BorderRadius.circular(2.5),
-                            ),
+                            LinearProgressIndicator( value: progress, backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5), valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary), minHeight: 5, borderRadius: BorderRadius.circular(2.5),),
                           ]
                         ],
                       ),
@@ -1022,83 +1391,43 @@ class _LibraryScreenState extends State<LibraryScreen> {
           );
         } catch (e, stackTrace) {
           print("Error in List itemBuilder $index: $e\n$stackTrace");
-          return ListTile(
-            leading: const Icon(Icons.error, color: Colors.red),
-            title: const Text('Error loading item'),
-            subtitle: Text(e.toString()),
-          );
+          return ListTile( leading: const Icon(Icons.error, color: Colors.red), title: const Text('Error loading item'), subtitle: Text(e.toString()), );
         }
       },
     );
   }
+}
 
-} // End of _LibraryScreenState
 
-// ====================================
-// StatsScreen Widget (Simplified)
-// ====================================
+// =========== [ StatsScreen Widget - Book Details/Actions ] ===========
 class StatsScreen extends StatelessWidget {
   final Book book;
   final VoidCallback onDeleteRequested;
 
-  const StatsScreen({
-    Key? key,
-    required this.book,
-    required this.onDeleteRequested,
-  }) : super(key: key);
+  const StatsScreen({ Key? key, required this.book, required this.onDeleteRequested, }) : super(key: key);
 
   String _formatDurationLocal(Duration? duration) => ReadingTimeTracker.formatDuration(duration);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(book.title, overflow: TextOverflow.ellipsis),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
+      appBar: AppBar( title: Text(book.title, overflow: TextOverflow.ellipsis), backgroundColor: Colors.transparent, elevation: 0, ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: ListView( // Use ListView in case content overflows on small screens
+        child: ListView(
           children: [
-            // Optional Cover Image Display
             if (book.coverImagePath != null && book.coverImagePath!.isNotEmpty)
-              Center(
-                child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.3),
-                    child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12.0),
-                        child: Image.asset(
-                            book.coverImagePath!,
-                            fit: BoxFit.contain,
-                            errorBuilder: (ctx, err, st) => const Icon(Icons.error, size: 60)
-                        )
-                    )
-                ),
-              ),
+              Center( child: ConstrainedBox( constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.3), child: ClipRRect( borderRadius: BorderRadius.circular(12.0), child: Image.asset( book.coverImagePath!, fit: BoxFit.contain, errorBuilder: (ctx, err, st) => const Icon(Icons.error, size: 60) ) ) ), ),
             if (book.coverImagePath != null) const SizedBox(height: 24),
-
-            // Simple Stats Card
             Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
-                child: _buildStatRow(context, Icons.timer_outlined, 'Total Time Read', _formatDurationLocal(Duration(seconds: book.totalReadingTime))),
-              ),
+              elevation: 2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding( padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0), child: _buildStatRow(context, Icons.timer_outlined, 'Total Time Read', _formatDurationLocal(Duration(seconds: book.totalReadingTime))), ),
             ),
-
             const SizedBox(height: 24),
-
-            // Delete Button
             OutlinedButton.icon(
               icon: Icon(Icons.delete_forever_outlined, color: Theme.of(context).colorScheme.error),
               label: Text('Delete Book Permanently', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-              style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Theme.of(context).colorScheme.error.withOpacity(0.5)),
-                  minimumSize: const Size(double.infinity, 44),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
-              ),
+              style: OutlinedButton.styleFrom( side: BorderSide(color: Theme.of(context).colorScheme.error.withOpacity(0.5)), minimumSize: const Size(double.infinity, 44), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)) ),
               onPressed: onDeleteRequested,
             ),
           ],
@@ -1107,7 +1436,6 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  // Helper widget (unchanged)
   Widget _buildStatRow(BuildContext context, IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10.0),
@@ -1118,15 +1446,7 @@ class StatsScreen extends StatelessWidget {
           const SizedBox(width: 16),
           Text('$label:', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(width: 8),
-          Expanded(
-              child: Text(
-                value,
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.end,
-                softWrap: true,
-                overflow: TextOverflow.fade,
-              )
-          ),
+          Expanded( child: Text( value, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.end, softWrap: true, overflow: TextOverflow.fade, ) ),
         ],
       ),
     );
@@ -1134,70 +1454,72 @@ class StatsScreen extends StatelessWidget {
 }
 
 
-// ====================================
-// SettingsScreen Widget
-// ====================================
+// =========== [ SettingsScreen Widget - App/Account Settings ] ===========
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ReadingSettings>(
-      builder: (context, readingSettings, child) {
-        return Scaffold(
-          appBar: AppBar(title: const Text('Settings')),
-          body: ListView(
-            padding: const EdgeInsets.all(8.0),
-            children: [
-              _buildSectionHeader(context, 'Appearance'),
-              _buildThemeSetting(context, readingSettings),
-              const Divider(indent: 16, endIndent: 16),
-              _buildScrollDirectionSetting(context, readingSettings),
-              const Divider(height: 20, thickness: 1),
-              _buildSectionHeader(context, 'About'),
-              _buildAboutTile(context),
-            ],
+    final readingSettings = context.watch<ReadingSettings>();
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final userEmail = authService.currentUser?.email;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        padding: const EdgeInsets.all(8.0),
+        children: [
+          _buildSectionHeader(context, 'Appearance'),
+          _buildThemeSetting(context, readingSettings),
+          const Divider(indent: 16, endIndent: 16),
+          _buildScrollDirectionSetting(context, readingSettings),
+          const Divider(height: 20, thickness: 1),
+          _buildSectionHeader(context, 'Account'),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Logout'),
+            subtitle: userEmail != null ? Text('Logged in as: $userEmail') : null,
+            onTap: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Confirm Logout'),
+                  content: const Text('Are you sure you want to log out?'),
+                  actions: [
+                    TextButton( onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel'), ),
+                    TextButton( style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error), onPressed: () => Navigator.of(context).pop(true), child: const Text('Logout'), ),
+                  ],
+                ),
+              );
+              if (confirm == true && context.mounted) {
+                await authService.signOut();
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              }
+            },
           ),
-        );
-      },
+          const Divider(height: 20, thickness: 1),
+          _buildSectionHeader(context, 'About'),
+          _buildAboutTile(context),
+        ],
+      ),
     );
   }
 
   Widget _buildSectionHeader(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 20.0, bottom: 8.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
+      child: Text( title, style: Theme.of(context).textTheme.titleMedium?.copyWith( color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600, ), ),
     );
   }
 
   Widget _buildThemeSetting(BuildContext context, ReadingSettings settings) {
     return ListTile(
-      leading: Icon(
-          settings.themeMode == ThemeMode.light ? Icons.wb_sunny_outlined :
-          settings.themeMode == ThemeMode.dark ? Icons.nightlight_outlined :
-          Icons.brightness_auto_outlined
-      ),
+      leading: Icon( settings.themeMode == ThemeMode.light ? Icons.wb_sunny_outlined : settings.themeMode == ThemeMode.dark ? Icons.nightlight_outlined : Icons.brightness_auto_outlined ),
       title: const Text('App Theme'),
       trailing: DropdownButton<ThemeMode>(
-        value: settings.themeMode,
-        underline: Container(),
-        borderRadius: BorderRadius.circular(8),
-        items: const [
-          DropdownMenuItem(value: ThemeMode.system, child: Text('System Default')),
-          DropdownMenuItem(value: ThemeMode.light, child: Text('Light')),
-          DropdownMenuItem(value: ThemeMode.dark, child: Text('Dark')),
-        ],
-        onChanged: (value) {
-          if (value != null) {
-            settings.updateSetting(ReadingSettings._themeModeKey, value);
-          }
-        },
+        value: settings.themeMode, underline: Container(), borderRadius: BorderRadius.circular(8),
+        items: const [ DropdownMenuItem(value: ThemeMode.system, child: Text('System Default')), DropdownMenuItem(value: ThemeMode.light, child: Text('Light')), DropdownMenuItem(value: ThemeMode.dark, child: Text('Dark')), ],
+        onChanged: (value) { if (value != null) { settings.updateSetting(ReadingSettings._themeModeKey, value); } },
       ),
     );
   }
@@ -1207,40 +1529,20 @@ class SettingsScreen extends StatelessWidget {
       leading: const Icon(Icons.swap_horiz_outlined),
       title: const Text('Reader Scroll Direction'),
       trailing: DropdownButton<EpubScrollDirection>(
-        value: settings.scrollDirection,
-        underline: Container(),
-        borderRadius: BorderRadius.circular(8),
-        items: const [
-          DropdownMenuItem(value: EpubScrollDirection.HORIZONTAL, child: Text('Horizontal')),
-          DropdownMenuItem(value: EpubScrollDirection.VERTICAL, child: Text('Vertical')),
-        ],
-        onChanged: (value) {
-          if (value != null) {
-            settings.updateSetting(ReadingSettings._scrollDirectionKey, value);
-          }
-        },
+        value: settings.scrollDirection, underline: Container(), borderRadius: BorderRadius.circular(8),
+        items: const [ DropdownMenuItem(value: EpubScrollDirection.HORIZONTAL, child: Text('Horizontal')), DropdownMenuItem(value: EpubScrollDirection.VERTICAL, child: Text('Vertical')), ],
+        onChanged: (value) { if (value != null) { settings.updateSetting(ReadingSettings._scrollDirectionKey, value); } },
       ),
     );
   }
 
   Widget _buildAboutTile(BuildContext context) {
-    String appVersion = '1.6.0'; // Example version
+    String appVersion = '1.7.0'; // Consider using package_info_plus
     return ListTile(
-      leading: const Icon(Icons.info_outline),
-      title: const Text('App Version'),
-      subtitle: Text(appVersion),
+      leading: const Icon(Icons.info_outline), title: const Text('App Version'), subtitle: Text(appVersion),
       onTap: () {
-        showAboutDialog(
-          context: context,
-          applicationName: 'Flutter EPUB Reader',
-          applicationVersion: appVersion,
-          applicationLegalese: '© 2024 Your Name/Company',
-          children: [
-            const Padding(
-                padding: EdgeInsets.only(top: 15),
-                child: Text('A simple EPUB reader application built using Flutter.')
-            )
-          ],
+        showAboutDialog( context: context, applicationName: 'Flutter EPUB Reader', applicationVersion: appVersion, applicationLegalese: '© 2024 Your Name/Company',
+          children: [ const Padding( padding: EdgeInsets.only(top: 15), child: Text('A simple EPUB reader application built using Flutter.') ) ],
         );
       },
     );
@@ -1248,9 +1550,7 @@ class SettingsScreen extends StatelessWidget {
 }
 
 
-// ====================================
-// HighlightsScreen Widget
-// ====================================
+// =========== [ HighlightsScreen Widget - View Highlights ] ===========
 class HighlightsScreen extends StatelessWidget {
   final Book book;
   const HighlightsScreen({Key? key, required this.book}) : super(key: key);
@@ -1259,8 +1559,7 @@ class HighlightsScreen extends StatelessWidget {
     try {
       if (book.highlights is Map) {
         final potentialMap = book.highlights;
-        if (potentialMap.keys.every((k) => k is String) &&
-            potentialMap.values.every((v) => v is List && v.every((item) => item is String))) {
+        if (potentialMap.keys.every((k) => k is String) && potentialMap.values.every((v) => v is List && v.every((item) => item is String))) {
           return Map<String, List<String>>.from(potentialMap);
         }
       }
@@ -1271,25 +1570,12 @@ class HighlightsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Map<String, List<String>> highlights = _getValidHighlights();
-    final List<MapEntry<String, List<String>>> chapterEntries = highlights.entries
-        .where((entry) => entry.value.isNotEmpty)
-        .toList();
+    final List<MapEntry<String, List<String>>> chapterEntries = highlights.entries.where((entry) => entry.value.isNotEmpty).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Highlights: ${book.title}', overflow: TextOverflow.ellipsis),
-      ),
+      appBar: AppBar( title: Text('Highlights: ${book.title}', overflow: TextOverflow.ellipsis), ),
       body: chapterEntries.isEmpty
-          ? Center(
-          child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Text(
-                'No highlights saved for this book yet.',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey),
-                textAlign: TextAlign.center,
-              )
-          )
-      )
+          ? Center( child: Padding( padding: const EdgeInsets.all(20.0), child: Text( 'No highlights saved for this book yet.', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey), textAlign: TextAlign.center, ) ) )
           : ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0),
         itemCount: chapterEntries.length,
@@ -1297,35 +1583,19 @@ class HighlightsScreen extends StatelessWidget {
           final entry = chapterEntries[chapterIndex];
           final String chapter = entry.key;
           final List<String> chapterHighlights = entry.value;
-
           if (chapterHighlights.isEmpty) return const SizedBox.shrink();
-
           return Card(
-            margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-            elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0), elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             child: ExpansionTile(
-              title: Text(
-                  chapter.isNotEmpty ? chapter : 'Chapter Highlights',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)
-              ),
-              initiallyExpanded: true,
-              childrenPadding: const EdgeInsets.only(left: 16, right: 16, bottom: 16, top: 0),
-              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              shape: const Border(),
+              title: Text( chapter.isNotEmpty ? chapter : 'Chapter Highlights', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600) ),
+              initiallyExpanded: true, childrenPadding: const EdgeInsets.only(left: 16, right: 16, bottom: 16, top: 0), tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), shape: const Border(),
               children: chapterHighlights.map((text) {
                 return Padding(
                   padding: const EdgeInsets.only(top: 10.0),
                   child: Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: SelectableText(
-                        text.trim(),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4)
-                    ),
+                    decoration: BoxDecoration( color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.7), borderRadius: BorderRadius.circular(8), ),
+                    child: SelectableText( text.trim(), style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4) ),
                   ),
                 );
               }).toList(),

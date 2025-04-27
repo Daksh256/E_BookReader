@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "327846879782",
+    "project_id": "e-bookreader",
+    "storage_bucket": "e-bookreader.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:327846879782:android:13558640fcb9d956a27ce7",
+        "android_client_info": {
+          "package_name": "com.example.test_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAW9P00L29if6oXzDV-aVbpjp14OPQ_sr4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
